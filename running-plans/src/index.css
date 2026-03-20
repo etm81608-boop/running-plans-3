@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FullCalendar overrides */
+.fc .fc-toolbar-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.fc .fc-button-primary {
+  background-color: #4f46e5 !important;
+  border-color: #4338ca !important;
+}
+.fc .fc-button-primary:hover {
+  background-color: #4338ca !important;
+}
+.fc .fc-event {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.fc .fc-daygrid-day.fc-day-today {
+  background-color: #eef2ff !important;
+}
