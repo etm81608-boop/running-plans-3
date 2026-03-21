@@ -27,7 +27,17 @@ const PALETTE = [
 const EMPTY_FORM = {
   runnerId: '', date: '',
   warmup: '', mainWorkout: '', cooldown: '', crossTraining: '', notes: '',
+  visibilityGroup: '',
 }
+
+const VG_OPTIONS = [
+  { value: '',  label: 'Off — private' },
+  { value: '1', label: 'Group 1' },
+  { value: '2', label: 'Group 2' },
+  { value: '3', label: 'Group 3' },
+  { value: '4', label: 'Group 4' },
+  { value: '5', label: 'Group 5' },
+]
 
 export default function CalendarPage() {
   const { docs: assignments } = useCollection('assignments', 'date')
@@ -113,13 +123,14 @@ export default function CalendarPage() {
   function handleEventClick(info) {
     const a = info.event.extendedProps
     setForm({
-      runnerId:     a.runnerId     || '',
-      date:         a.date         || '',
-      warmup:       a.warmup       || '',
-      mainWorkout:  a.mainWorkout  || '',
-      cooldown:     a.cooldown     || '',
-      crossTraining:a.crossTraining|| '',
-      notes:        a.notes        || '',
+      runnerId:        a.runnerId        || '',
+      date:            a.date            || '',
+      warmup:          a.warmup          || '',
+      mainWorkout:     a.mainWorkout     || '',
+      cooldown:        a.cooldown        || '',
+      crossTraining:   a.crossTraining   || '',
+      notes:           a.notes           || '',
+      visibilityGroup: a.visibilityGroup ? String(a.visibilityGroup) : '',
     })
     setCurrentId(a.id)
     setIsEditing(true)
@@ -156,18 +167,20 @@ export default function CalendarPage() {
     const runner = runners.find((r) => r.id === form.runnerId)
 
     const data = {
-      runnerId:      form.runnerId,
-      runnerName:    runner?.name || '',
-      date:          form.date,
-      warmup:        form.warmup.trim(),
-      mainWorkout:   form.mainWorkout.trim(),
-      cooldown:      form.cooldown.trim(),
-      crossTraining: form.crossTraining.trim(),
-      notes:         form.notes.trim(),
+      runnerId:        form.runnerId,
+      runnerName:      runner?.name || '',
+      date:            form.date,
+      warmup:          form.warmup.trim(),
+      mainWorkout:     form.mainWorkout.trim(),
+      cooldown:        form.cooldown.trim(),
+      crossTraining:   form.crossTraining.trim(),
+      notes:           form.notes.trim(),
       // Keep for share-link / public page compatibility
-      workoutTitle:  form.mainWorkout.trim().slice(0, 60) || 'Workout',
-      runnerIds:     [form.runnerId],
-      runnerNames:   [runner?.name || ''],
+      workoutTitle:    form.mainWorkout.trim().slice(0, 60) || 'Workout',
+      runnerIds:       [form.runnerId],
+      runnerNames:     [runner?.name || ''],
+      // Visibility group — determines which peers can see this workout
+      visibilityGroup: form.visibilityGroup ? parseInt(form.visibilityGroup, 10) : null,
     }
 
     try {
@@ -428,7 +441,14 @@ export default function CalendarPage() {
               <select
                 className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
                 value={form.runnerId}
-                onChange={(e) => set('runnerId', e.target.value)}
+                onChange={(e) => {
+                  const r = runners.find((r) => r.id === e.target.value)
+                  setForm((f) => ({
+                    ...f,
+                    runnerId: e.target.value,
+                    visibilityGroup: f.visibilityGroup || (r?.visibilityGroup ? String(r.visibilityGroup) : ''),
+                  }))
+                }}
               >
                 <option value="">— select a runner —</option>
                 {runners.map((r) => (
@@ -471,6 +491,23 @@ export default function CalendarPage() {
                 </select>
               </div>
             )}
+
+            {/* Visibility group */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">
+                👥 Visibility
+              </label>
+              <select
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                value={form.visibilityGroup}
+                onChange={(e) => set('visibilityGroup', e.target.value)}
+              >
+                {VG_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-400">Runners in the same group can see each other's workouts</span>
+            </div>
 
             <div className="border-t border-gray-100 pt-1" />
 
