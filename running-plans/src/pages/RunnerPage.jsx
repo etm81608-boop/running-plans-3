@@ -8,7 +8,6 @@ import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-// Same localStorage key format used by PublicWorkout.jsx
 function getStoredLog(assignmentId) {
   try { return JSON.parse(localStorage.getItem(`wlog_${assignmentId}`) || 'null') } catch { return null }
 }
@@ -20,14 +19,12 @@ function getInitials(name = '') {
   return name.trim().split(/\s+/).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 
-// Get ISO date string for Monday of the week containing dateStr
 function getMondayOf(dateStr) {
   const d = parseISO(dateStr + 'T12:00:00')
   const mon = startOfWeek(d, { weekStartsOn: 1 })
   return mon.toISOString().split('T')[0]
 }
 
-// Return array of 7 ISO date strings Mon→Sun for a week starting at mondayStr
 function weekDays(mondayStr) {
   const base = parseISO(mondayStr + 'T12:00:00')
   return Array.from({ length: 7 }, (_, i) =>
@@ -35,35 +32,23 @@ function weekDays(mondayStr) {
   )
 }
 
-const RPE_LABELS = {
-  1:'Very Easy', 2:'Easy', 3:'Moderate', 4:'Somewhat Hard',
-  5:'Hard', 6:'Hard+', 7:'Very Hard', 8:'Very Hard+',
-  9:'Max Effort', 10:'All Out',
-}
-
-function rpeColor(rpe) {
-  if (!rpe) return ''
-  if (rpe <= 3) return 'bg-green-100 text-green-700'
-  if (rpe <= 5) return 'bg-yellow-100 text-yellow-700'
-  if (rpe <= 7) return 'bg-orange-100 text-orange-700'
-  return 'bg-red-100 text-red-700'
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RunnerPage() {
   const { runnerId } = useParams()
   const [assignments,  setAssignments]  = useState([])
-  const [peersByDate,  setPeersByDate]  = useState({}) // date → [peer assignment, ...]
+  const [peersByDate,  setPeersByDate]  = useState({})
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
   const runnerName = assignments[0]?.runnerName || ''
 
-  // localStorage key for tracking which assignments this runner has logged
   const LS_KEY = `logged_${runnerId}`
   const [loggedIds, setLoggedIds] = useState(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
   })
+  // Which day's log form is open (dateStr or null)
+  const [logOpenDate, setLogOpenDate] = useState(null)
+  const [showPast,    setShowPast]    = useState(false)
 
   function markLogged(assignmentId) {
     setLoggedIds((prev) => {
@@ -76,7 +61,6 @@ export default function RunnerPage() {
   useEffect(() => {
     async function load() {
       try {
-        // Load this runner's own assignments
         const snap = await getDocs(
           query(collection(db, 'assignments'), where('runnerId', '==', runnerId))
         )
@@ -86,20 +70,14 @@ export default function RunnerPage() {
           .sort((a, b) => a.date.localeCompare(b.date))
         setAssignments(docs)
 
-        // If any assignment has a visibilityGroup, load peer assignments
         const myGroup = docs.find((a) => a.visibilityGroup)?.visibilityGroup
         if (myGroup) {
           const peerSnap = await getDocs(
-            query(
-              collection(db, 'assignments'),
-              where('visibilityGroup', '==', myGroup)
-            )
+            query(collection(db, 'assignments'), where('visibilityGroup', '==', myGroup))
           )
           const peerDocs = peerSnap.docs
             .map((d) => ({ id: d.id, ...d.data() }))
             .filter((a) => a.date && a.runnerId !== runnerId)
-
-          // Build map: date → peer assignments
           const map = {}
           peerDocs.forEach((a) => {
             if (!map[a.date]) map[a.date] = []
@@ -118,18 +96,13 @@ export default function RunnerPage() {
 
   const today = startOfDay(new Date()).toISOString().split('T')[0]
 
-  // Build date → assignment lookup
   const assignmentByDate = useMemo(() => {
     const map = {}
     assignments.forEach((a) => { if (a.date) map[a.date] = a })
     return map
   }, [assignments])
 
-  // Week navigation — start on the Monday of the current week
   const [currentMonday, setCurrentMonday] = useState(() => getMondayOf(today))
-  const [selectedDate,  setSelectedDate]  = useState(null)
-  const [showPast,      setShowPast]      = useState(false)
-
   const days = useMemo(() => weekDays(currentMonday), [currentMonday])
 
   const hasPrev = useMemo(
@@ -142,21 +115,18 @@ export default function RunnerPage() {
   )
 
   function goNextWeek() {
-    const next = addDays(parseISO(currentMonday + 'T12:00:00'), 7).toISOString().split('T')[0]
-    setCurrentMonday(next)
-    setSelectedDate(null)
+    setCurrentMonday(addDays(parseISO(currentMonday + 'T12:00:00'), 7).toISOString().split('T')[0])
+    setLogOpenDate(null)
   }
   function goPrevWeek() {
-    const prev = addDays(parseISO(currentMonday + 'T12:00:00'), -7).toISOString().split('T')[0]
-    setCurrentMonday(prev)
-    setSelectedDate(null)
+    setCurrentMonday(addDays(parseISO(currentMonday + 'T12:00:00'), -7).toISOString().split('T')[0])
+    setLogOpenDate(null)
   }
 
   const upcomingCount = useMemo(
     () => assignments.filter((a) => a.date >= today).length,
     [assignments, today]
   )
-
   const pastAssignments = useMemo(
     () => [...assignments.filter((a) => a.date < currentMonday)].sort((a, b) => b.date.localeCompare(a.date)),
     [assignments, currentMonday]
@@ -177,16 +147,16 @@ export default function RunnerPage() {
     </div>
   )
 
-  const selectedAssignment = selectedDate ? assignmentByDate[selectedDate] : null
+  const hasAnyWorkoutThisWeek = days.some((d) => assignmentByDate[d])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 p-4 py-10">
-      <div className="max-w-xl mx-auto space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 px-4 py-8">
 
-        {/* Header */}
-        <div className="bg-white/10 backdrop-blur rounded-3xl px-6 py-5 text-white">
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="bg-white/10 backdrop-blur rounded-3xl px-6 py-5 text-white flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-xl font-bold">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
               {getInitials(runnerName) || '🏃'}
             </div>
             <div>
@@ -194,33 +164,35 @@ export default function RunnerPage() {
               <h1 className="text-2xl font-bold">{runnerName || 'Runner Schedule'}</h1>
             </div>
           </div>
-          <div className="mt-3 flex gap-4 text-sm text-white/70">
+          <div className="flex gap-5 text-sm text-white/70">
             <span>📅 {upcomingCount} upcoming</span>
             <span>✅ {loggedIds.length} logged</span>
           </div>
         </div>
+      </div>
 
-        {/* Weekly horizontal calendar */}
+      {/* Weekly grid card */}
+      <div className="max-w-7xl mx-auto mb-6">
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
 
-          {/* Week navigation header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          {/* Week nav header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <button
               onClick={goPrevWeek}
               disabled={!hasPrev}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <p className="text-sm font-semibold text-gray-700">
+            <p className="text-base font-semibold text-gray-700">
               {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d, yyyy')}
             </p>
             <button
               onClick={goNextWeek}
               disabled={!hasNext}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -228,213 +200,196 @@ export default function RunnerPage() {
             </button>
           </div>
 
-          {/* Day pills row */}
-          <div className="grid grid-cols-7 gap-1 px-3 py-4">
-            {days.map((dateStr) => {
-              const d          = parseISO(dateStr + 'T12:00:00')
-              const hasWorkout = !!assignmentByDate[dateStr]
-              const isSelected = selectedDate === dateStr
-              const isToday    = dateStr === today
-              const isPast     = dateStr < today
+          {/* 7-column grid — horizontally scrollable on small screens */}
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-7 min-w-[700px]">
 
-              return (
-                <button
-                  key={dateStr}
-                  onClick={() => hasWorkout && setSelectedDate((s) => s === dateStr ? null : dateStr)}
-                  disabled={!hasWorkout}
-                  className={`flex flex-col items-center py-2.5 px-1 rounded-2xl transition-colors ${
-                    isSelected
-                      ? 'bg-brand-600 text-white shadow-md'
-                      : hasWorkout && !isPast
-                        ? 'bg-brand-50 text-brand-700 hover:bg-brand-100 cursor-pointer'
-                        : hasWorkout && isPast
-                          ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer'
-                          : 'text-gray-300 cursor-default'
-                  }`}
-                >
-                  <span className="text-xs font-medium mb-1">{format(d, 'EEE')}</span>
-                  <span className={`text-base font-bold leading-none ${isToday && !isSelected ? 'text-brand-600' : ''}`}>
-                    {format(d, 'd')}
-                  </span>
-                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 ${
-                    hasWorkout
-                      ? isSelected ? 'bg-white/70' : isPast ? 'bg-gray-400' : 'bg-brand-400'
-                      : 'invisible'
-                  }`} />
-                  {isToday && (
-                    <div className={`w-1 h-1 rounded-full mt-0.5 ${isSelected ? 'bg-yellow-300' : 'bg-yellow-400'}`} />
-                  )}
-                </button>
-              )
-            })}
+              {/* Row 1: Date headers */}
+              {days.map((dateStr) => {
+                const d       = parseISO(dateStr + 'T12:00:00')
+                const isToday = dateStr === today
+                const isPast  = dateStr < today
+                const hasWkt  = !!assignmentByDate[dateStr]
+
+                return (
+                  <div
+                    key={dateStr}
+                    className={`text-center py-3 px-2 border-b border-r border-gray-100 last:border-r-0 ${
+                      isToday
+                        ? 'bg-brand-600 text-white'
+                        : hasWkt && !isPast
+                          ? 'bg-brand-50 text-brand-700'
+                          : isPast
+                            ? 'bg-gray-50 text-gray-500'
+                            : 'bg-gray-50 text-gray-300'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                      {format(d, 'EEE')}
+                    </p>
+                    <p className="text-2xl font-bold leading-none mt-0.5">
+                      {format(d, 'd')}
+                    </p>
+                    <p className="text-xs opacity-70 mt-0.5">
+                      {format(d, 'MMM')}
+                    </p>
+                  </div>
+                )
+              })}
+
+              {/* Row 2: Workout content */}
+              {days.map((dateStr) => {
+                const a      = assignmentByDate[dateStr]
+                const isPast = dateStr < today
+                const isToday = dateStr === today
+                const isLogged = a ? loggedIds.includes(a.id) : false
+                const logOpen  = logOpenDate === dateStr
+
+                return (
+                  <div
+                    key={dateStr}
+                    className={`border-r border-gray-100 last:border-r-0 flex flex-col ${
+                      isToday ? 'bg-brand-50/40' : 'bg-white'
+                    }`}
+                  >
+                    {a ? (
+                      <div className="flex-1 flex flex-col p-3 gap-2">
+
+                        {/* Status badge */}
+                        <div className="flex justify-center">
+                          {isLogged
+                            ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
+                            : isPast
+                              ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
+                              : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2 py-0.5 rounded-full">Upcoming</span>
+                          }
+                        </div>
+
+                        {/* Workout blocks */}
+                        {a.warmup && (
+                          <DayBlock emoji="🔥" label="Warm-Up" content={a.warmup} bg="bg-green-50" border="border-green-200" text="text-green-800" />
+                        )}
+                        {a.mainWorkout && (
+                          <DayBlock emoji="⚡" label="Main" content={a.mainWorkout} bg="bg-indigo-50" border="border-indigo-200" text="text-indigo-800" />
+                        )}
+                        {a.cooldown && (
+                          <DayBlock emoji="❄️" label="Cool-Down" content={a.cooldown} bg="bg-blue-50" border="border-blue-200" text="text-blue-800" />
+                        )}
+                        {a.crossTraining && (
+                          <DayBlock emoji="💪" label="Cross Train" content={a.crossTraining} bg="bg-teal-50" border="border-teal-200" text="text-teal-800" />
+                        )}
+                        {a.notes && (
+                          <DayBlock emoji="📝" label="Notes" content={a.notes} bg="bg-amber-50" border="border-amber-200" text="text-amber-800" />
+                        )}
+                        {!a.warmup && !a.mainWorkout && !a.cooldown && !a.crossTraining && !a.notes && (
+                          <p className="text-xs text-gray-400 text-center py-2 italic">Rest / recovery</p>
+                        )}
+
+                        {/* Training partners */}
+                        {(peersByDate[dateStr] || []).length > 0 && (
+                          <div className="mt-1 rounded-lg bg-indigo-50 border border-indigo-100 p-2">
+                            <p className="text-xs font-bold text-indigo-500 mb-1">👯 Partners</p>
+                            {peersByDate[dateStr].map((p) => (
+                              <div key={p.id} className="text-xs text-indigo-700 font-medium truncate">
+                                {p.runnerName}
+                                {p.mainWorkout && (
+                                  <span className="text-indigo-400 font-normal"> — {p.mainWorkout.slice(0, 40)}</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Log section */}
+                        <div className="mt-auto pt-2">
+                          {isLogged ? (
+                            <LogSummary assignmentId={a.id} />
+                          ) : (
+                            <>
+                              {!logOpen && (
+                                <button
+                                  onClick={() => setLogOpenDate(dateStr)}
+                                  className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors"
+                                >
+                                  📋 Log Activity
+                                </button>
+                              )}
+                              {logOpen && (
+                                <LogForm
+                                  assignmentId={a.id}
+                                  assignment={a}
+                                  onLogged={() => {
+                                    markLogged(a.id)
+                                    setLogOpenDate(null)
+                                  }}
+                                  onCancel={() => setLogOpenDate(null)}
+                                  compact
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center py-8">
+                        <p className="text-xs text-gray-300 italic">Rest day</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
-          {/* Selected day workout */}
-          {selectedAssignment && (
-            <div className="border-t border-gray-100">
-              <WorkoutCard
-                assignment={selectedAssignment}
-                peers={peersByDate[selectedDate] || []}
-                isLogged={loggedIds.includes(selectedAssignment.id)}
-                isPast={selectedDate < today}
-                expanded
-                onToggle={() => {}}
-                onLogged={() => markLogged(selectedAssignment.id)}
-                inline
-              />
-            </div>
-          )}
-
-          {!selectedDate && (
-            <p className="text-center text-gray-400 text-sm py-5 px-4">
-              {Object.keys(assignmentByDate).some((d) => days.includes(d))
-                ? 'Tap a highlighted day to see your workout'
-                : 'No workouts scheduled this week'}
+          {!hasAnyWorkoutThisWeek && (
+            <p className="text-center text-gray-400 text-sm py-6 px-4">
+              No workouts scheduled this week
             </p>
           )}
         </div>
-
-        {/* Past workouts */}
-        {pastAssignments.length > 0 && (
-          <div>
-            <button
-              onClick={() => setShowPast((v) => !v)}
-              className="w-full flex items-center justify-between bg-white/10 hover:bg-white/20 text-white rounded-2xl px-5 py-3 text-sm font-medium transition-colors"
-            >
-              <span>Past workouts ({pastAssignments.length})</span>
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${showPast ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {showPast && (
-              <div className="mt-2 space-y-2">
-                {pastAssignments.map((a) => (
-                  <WorkoutCard
-                    key={a.id}
-                    assignment={a}
-                    peers={peersByDate[a.date] || []}
-                    isPast
-                    isLogged={loggedIds.includes(a.id)}
-                    expanded={selectedDate === a.id}
-                    onToggle={() => setSelectedDate((s) => s === a.id ? null : a.id)}
-                    onLogged={() => markLogged(a.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <p className="text-center text-white/30 text-xs pb-4">Team Running Plans · Episcopal Academy</p>
       </div>
+
+      {/* Past workouts */}
+      {pastAssignments.length > 0 && (
+        <div className="max-w-7xl mx-auto mb-6">
+          <button
+            onClick={() => setShowPast((v) => !v)}
+            className="w-full flex items-center justify-between bg-white/10 hover:bg-white/20 text-white rounded-2xl px-5 py-3 text-sm font-medium transition-colors"
+          >
+            <span>Past workouts ({pastAssignments.length})</span>
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${showPast ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showPast && (
+            <div className="mt-2 space-y-2">
+              {pastAssignments.map((a) => (
+                <PastWorkoutCard
+                  key={a.id}
+                  assignment={a}
+                  isLogged={loggedIds.includes(a.id)}
+                  onLogged={() => markLogged(a.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="text-center text-white/30 text-xs pb-4 max-w-7xl mx-auto">
+        Team Running Plans · Episcopal Academy
+      </p>
     </div>
   )
 }
 
-// ── Workout Card ──────────────────────────────────────────────────────────────
+// ── Day Block ─────────────────────────────────────────────────────────────────
 
-function WorkoutCard({ assignment: a, peers = [], isPast, isLogged, expanded, onToggle, onLogged, inline = false }) {
-  const dateStr   = format(parseISO(a.date + 'T12:00:00'), 'EEEE, MMMM d')
-  const shortDate = format(parseISO(a.date + 'T12:00:00'), 'EEE M/d')
-
-  const statusBadge = isLogged
-    ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-0.5 rounded-full">✓ Logged</span>
-    : isPast
-      ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2.5 py-0.5 rounded-full">Past</span>
-      : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2.5 py-0.5 rounded-full">Upcoming</span>
-
+function DayBlock({ emoji, label, content, bg, border, text }) {
   return (
-    <div className={inline ? '' : 'bg-white rounded-2xl shadow-sm overflow-hidden'}>
-      {/* Card header — hidden when inline (already shown by calendar) */}
-      {!inline && (
-        <button
-          onClick={onToggle}
-          className="w-full text-left px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 transition-colors"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="font-semibold text-gray-900 text-sm">{shortDate}</span>
-              {statusBadge}
-            </div>
-            {a.mainWorkout ? (
-              <p className="text-sm text-gray-600 line-clamp-2">⚡ {a.mainWorkout}</p>
-            ) : (
-              <p className="text-sm text-gray-400 italic">Rest / recovery day</p>
-            )}
-          </div>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className={`h-4 w-4 text-gray-400 mt-1 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-      )}
-
-      {/* Expanded content */}
-      {(expanded || inline) && (
-        <div className={inline ? '' : 'border-t border-gray-100'}>
-          {/* Workout details */}
-          <div className="px-5 py-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{dateStr}</p>
-              {statusBadge}
-            </div>
-            {a.warmup && (
-              <Block emoji="🔥" title="Warm-Up" content={a.warmup} color="bg-green-50 border-green-100" />
-            )}
-            {a.mainWorkout && (
-              <Block emoji="⚡" title="Main Workout" content={a.mainWorkout} color="bg-brand-50 border-brand-100" />
-            )}
-            {a.cooldown && (
-              <Block emoji="❄️" title="Cool-Down" content={a.cooldown} color="bg-blue-50 border-blue-100" />
-            )}
-            {a.crossTraining && (
-              <Block emoji="💪" title="Cross Training" content={a.crossTraining} color="bg-teal-50 border-teal-100" />
-            )}
-            {a.notes && (
-              <Block emoji="📝" title="Coach's Notes" content={a.notes} color="bg-amber-50 border-amber-100" />
-            )}
-          </div>
-
-          {/* Training partners */}
-          {peers.length > 0 && (
-            <div className="border-t border-gray-100 px-5 py-4 bg-indigo-50">
-              <p className="text-xs font-bold text-indigo-500 uppercase tracking-wide mb-2">
-                👯 Training Partners Today
-              </p>
-              <div className="space-y-2">
-                {peers.map((p) => (
-                  <div key={p.id} className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700 flex-shrink-0 mt-0.5">
-                      {getInitials(p.runnerName)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-800">{p.runnerName}</p>
-                      {p.mainWorkout && (
-                        <p className="text-xs text-gray-600 line-clamp-2">⚡ {p.mainWorkout}</p>
-                      )}
-                      {p.warmup && (
-                        <p className="text-xs text-gray-400 line-clamp-1">🔥 {p.warmup}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Log form / log summary */}
-          <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
-            {isLogged ? (
-              <LogSummary assignmentId={a.id} />
-            ) : (
-              <LogForm assignmentId={a.id} assignment={a} onLogged={onLogged} />
-            )}
-          </div>
-        </div>
-      )}
+    <div className={`rounded-lg border p-2 ${bg} ${border}`}>
+      <p className={`text-xs font-bold mb-0.5 ${text}`}>{emoji} {label}</p>
+      <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{content}</p>
     </div>
   )
 }
@@ -443,71 +398,42 @@ function WorkoutCard({ assignment: a, peers = [], isPast, isLogged, expanded, on
 
 function LogSummary({ assignmentId }) {
   const log = getStoredLog(assignmentId)
-
   if (!log) {
     return (
-      <p className="text-emerald-600 font-semibold text-sm text-center py-1">
-        ✅ Activity logged — your coach can see your response!
+      <p className="text-xs text-emerald-600 font-semibold text-center py-1">
+        ✅ Logged!
       </p>
     )
   }
-
   return (
-    <div>
-      <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-3">✅ Your Activity Log</p>
-      <div className="space-y-1.5">
-        {log.actualActivity && (
-          <div>
-            <p className="text-xs font-semibold text-gray-500">What you did</p>
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">{log.actualActivity}</p>
-          </div>
-        )}
-        {(log.distance || log.duration || log.rpe) && (
-          <div className="flex gap-4 pt-1">
-            {log.distance && (
-              <div>
-                <p className="text-xs font-semibold text-gray-500">Distance</p>
-                <p className="text-sm text-gray-800">{log.distance}</p>
-              </div>
-            )}
-            {log.duration && (
-              <div>
-                <p className="text-xs font-semibold text-gray-500">Time</p>
-                <p className="text-sm text-gray-800">{log.duration}</p>
-              </div>
-            )}
-            {log.rpe && (
-              <div>
-                <p className="text-xs font-semibold text-gray-500">Effort</p>
-                <p className="text-sm text-gray-800">{log.rpe}/10</p>
-              </div>
-            )}
-          </div>
-        )}
-        {log.notes && (
-          <div className="pt-1">
-            <p className="text-xs font-semibold text-gray-500">Notes</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.notes}</p>
-          </div>
-        )}
+    <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 space-y-1">
+      <p className="text-xs font-bold text-emerald-600">✅ Your Log</p>
+      {log.actualActivity && (
+        <p className="text-xs text-gray-700 line-clamp-3">{log.actualActivity}</p>
+      )}
+      <div className="flex gap-2 flex-wrap">
+        {log.distance && <span className="text-xs text-gray-500">📏 {log.distance}</span>}
+        {log.duration  && <span className="text-xs text-gray-500">⏱ {log.duration}</span>}
+        {log.rpe       && <span className="text-xs text-gray-500">💪 RPE {log.rpe}/10</span>}
       </div>
+      {log.notes && <p className="text-xs text-gray-400 italic line-clamp-2">{log.notes}</p>}
     </div>
   )
 }
 
 // ── Log Form ──────────────────────────────────────────────────────────────────
 
-function LogForm({ assignmentId, assignment, onLogged }) {
-  const [form,    setForm]    = useState({ actualActivity: '', distance: '', duration: '', rpe: '', notes: '' })
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState(null)
+function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false }) {
+  const [form,   setForm]   = useState({ actualActivity: '', distance: '', duration: '', rpe: '', notes: '' })
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState(null)
 
   function set(field, val) { setForm((f) => ({ ...f, [field]: val })) }
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.actualActivity.trim()) {
-      setError('Please describe what you did before submitting.')
+      setError('Please describe what you did.')
       return
     }
     setSaving(true)
@@ -529,55 +455,47 @@ function LogForm({ assignmentId, assignment, onLogged }) {
         rpe:         logData.rpe ? parseInt(logData.rpe, 10) : null,
         submittedAt: serverTimestamp(),
       })
-      // Save to localStorage so this device can show the log back to the runner
       storeLog(assignmentId, logData)
       onLogged()
     } catch {
-      setError('Something went wrong. Please try again.')
+      setError('Something went wrong. Try again.')
       setSaving(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <p className="text-sm font-semibold text-gray-700">📋 Log your activity</p>
-
-      <div>
-        <textarea
-          rows={2}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
-          placeholder="What did you actually do? (completed workout, modified, skipped, etc.)"
-          value={form.actualActivity}
-          onChange={(e) => set('actualActivity', e.target.value)}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <textarea
+        rows={compact ? 2 : 3}
+        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+        placeholder="What did you do? (completed, modified, skipped…)"
+        value={form.actualActivity}
+        onChange={(e) => set('actualActivity', e.target.value)}
+      />
+      <div className="grid grid-cols-2 gap-1">
         <input
           type="text"
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-          placeholder="Distance (e.g. 5 mi)"
+          className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          placeholder="Distance"
           value={form.distance}
           onChange={(e) => set('distance', e.target.value)}
         />
         <input
           type="text"
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-          placeholder="Time (e.g. 40 min)"
+          className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          placeholder="Time"
           value={form.duration}
           onChange={(e) => set('duration', e.target.value)}
         />
       </div>
-
-      {/* RPE */}
       <div>
-        <p className="text-xs text-gray-500 mb-1.5">How hard? (1 = easy, 10 = max)</p>
-        <div className="flex gap-1.5 flex-wrap">
+        <p className="text-xs text-gray-400 mb-1">Effort (1–10)</p>
+        <div className="flex gap-1 flex-wrap">
           {[1,2,3,4,5,6,7,8,9,10].map((n) => (
             <button
               key={n} type="button"
               onClick={() => set('rpe', n === form.rpe ? '' : n)}
-              className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+              className={`w-6 h-6 rounded text-xs font-bold transition-colors ${
                 form.rpe === n
                   ? 'bg-emerald-600 text-white'
                   : 'bg-white border border-gray-200 text-gray-600 hover:border-emerald-300'
@@ -588,25 +506,96 @@ function LogForm({ assignmentId, assignment, onLogged }) {
           ))}
         </div>
       </div>
-
       <textarea
         rows={1}
-        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
-        placeholder="Any notes for your coach? (optional)"
+        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+        placeholder="Notes for coach (optional)"
         value={form.notes}
         onChange={(e) => set('notes', e.target.value)}
       />
-
       {error && <p className="text-xs text-red-500">{error}</p>}
-
-      <button
-        type="submit"
-        disabled={saving}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors"
-      >
-        {saving ? 'Submitting…' : 'Submit Log'}
-      </button>
+      <div className="flex gap-1">
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors"
+        >
+          {saving ? 'Saving…' : 'Submit'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100 border border-gray-200"
+        >
+          ✕
+        </button>
+      </div>
     </form>
+  )
+}
+
+// ── Past Workout Card ─────────────────────────────────────────────────────────
+
+function PastWorkoutCard({ assignment: a, isLogged, onLogged }) {
+  const [open,        setOpen]        = useState(false)
+  const [logFormOpen, setLogFormOpen] = useState(false)
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-semibold text-gray-900 text-sm">
+              {format(parseISO(a.date + 'T12:00:00'), 'EEE M/d')}
+            </span>
+            {isLogged
+              ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
+              : <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
+            }
+          </div>
+          {a.mainWorkout
+            ? <p className="text-sm text-gray-600 line-clamp-2">⚡ {a.mainWorkout}</p>
+            : <p className="text-sm text-gray-400 italic">Rest / recovery</p>
+          }
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 mt-1 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 px-5 py-4 space-y-3">
+          {a.warmup       && <Block emoji="🔥" title="Warm-Up"      content={a.warmup}       color="bg-green-50 border-green-100" />}
+          {a.mainWorkout  && <Block emoji="⚡" title="Main Workout" content={a.mainWorkout}  color="bg-brand-50 border-brand-100" />}
+          {a.cooldown     && <Block emoji="❄️" title="Cool-Down"    content={a.cooldown}     color="bg-blue-50 border-blue-100" />}
+          {a.crossTraining && <Block emoji="💪" title="Cross Training" content={a.crossTraining} color="bg-teal-50 border-teal-100" />}
+          {a.notes        && <Block emoji="📝" title="Coach's Notes" content={a.notes}       color="bg-amber-50 border-amber-100" />}
+
+          <div className="border-t border-gray-100 pt-3 bg-gray-50 -mx-5 px-5 pb-1">
+            {isLogged ? (
+              <LogSummary assignmentId={a.id} />
+            ) : logFormOpen ? (
+              <LogForm
+                assignmentId={a.id}
+                assignment={a}
+                onLogged={() => { onLogged(); setLogFormOpen(false) }}
+                onCancel={() => setLogFormOpen(false)}
+              />
+            ) : (
+              <button
+                onClick={() => setLogFormOpen(true)}
+                className="w-full text-sm bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-xl font-semibold transition-colors"
+              >
+                📋 Log Activity
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
