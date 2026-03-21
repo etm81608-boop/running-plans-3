@@ -30,7 +30,7 @@ const nav = [
     ),
   },
   {
-    to: '/workouts', label: 'Workout Library',
+    to: '/workouts', label: 'Workout Templates',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -48,7 +48,7 @@ const nav = [
     ),
   },
   {
-    to: '/assign', label: 'Assign Workout',
+    to: '/assign', label: 'Bulk Assign',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -112,3 +112,4 @@ export default function Sidebar() {
     </aside>
   )
 }
+
