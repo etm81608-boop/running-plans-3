@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
-import { sendWorkoutEmail } from '../utils/emailService'
 import Toast from '../components/Toast'
 import { WORKOUT_TYPES, getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
 import { format } from 'date-fns'
@@ -12,32 +11,52 @@ const EMPTY_CUSTOM = {
   warmup: '', mainSet: '', cooldown: '', targetPace: '', notes: '',
 }
 
+// Map workout library fields → assignment fields that CalendarPage / RunnerPage expect
+function buildAssignmentFields(workoutDoc, assignmentNotes) {
+  const parts = [
+    workoutDoc.description?.trim(),
+    workoutDoc.mainSet?.trim(),
+    workoutDoc.targetPace?.trim() ? `Target pace: ${workoutDoc.targetPace.trim()}` : '',
+  ].filter(Boolean)
+
+  const noteParts = [
+    workoutDoc.notes?.trim(),
+    assignmentNotes?.trim(),
+  ].filter(Boolean)
+
+  return {
+    warmup:        workoutDoc.warmup?.trim()    || '',
+    mainWorkout:   parts.join('\n')             || '',
+    cooldown:      workoutDoc.cooldown?.trim()  || '',
+    crossTraining: '',
+    notes:         noteParts.join('\n\n')       || '',
+  }
+}
+
 export default function AssignWorkout() {
   const { docs: workouts } = useCollection('workouts', 'createdAt')
   const { docs: runners }  = useCollection('runners',  'name')
   const { docs: groups }   = useCollection('groups',   'name')
 
   // Step 1: workout source
-  const [workoutMode, setWorkoutMode]   = useState('library') // 'library' | 'custom'
+  const [workoutMode,     setWorkoutMode]     = useState('library') // 'library' | 'custom'
   const [selectedWorkout, setSelectedWorkout] = useState(null)
-  const [customWorkout, setCustomWorkout]     = useState(EMPTY_CUSTOM)
-  const [saveToLibrary, setSaveToLibrary]     = useState(false)
+  const [customWorkout,   setCustomWorkout]   = useState(EMPTY_CUSTOM)
+  const [saveToLibrary,   setSaveToLibrary]   = useState(false)
 
   // Step 2: date
   const [date, setDate] = useState('')
 
   // Step 3: recipients
-  const [mode, setMode]                       = useState('group')
-  const [selectedGroup, setSelectedGroup]     = useState('')
-  const [selectedRunners, setSelectedRunners] = useState([])
+  const [mode,             setMode]             = useState('group')
+  const [selectedGroup,    setSelectedGroup]    = useState('')
+  const [selectedRunners,  setSelectedRunners]  = useState([])
 
-  // Step 4: options
-  const [notes,     setNotes]     = useState('')
-  const [sendEmail, setSendEmail] = useState(false)
+  // Step 4: notes
+  const [notes,   setNotes]   = useState('')
 
-  const [saving,    setSaving]    = useState(false)
-  const [toast,     setToast]     = useState(null)
-  const [shareLink, setShareLink] = useState('')
+  const [saving,  setSaving]  = useState(false)
+  const [toast,   setToast]   = useState(null)
 
   // Derived recipient list
   const recipients = useMemo(() => {
@@ -57,10 +76,12 @@ export default function AssignWorkout() {
     setCustomWorkout((prev) => ({ ...prev, [field]: value }))
   }
 
-  // Determine the "active" workout for the summary
-  const activeWorkout = workoutMode === 'library' ? selectedWorkout
-    : customWorkout.title.trim() ? { ...customWorkout, title: customWorkout.title.trim() }
-    : null
+  // The "active" workout for the summary
+  const activeWorkout = workoutMode === 'library'
+    ? selectedWorkout
+    : customWorkout.title.trim()
+      ? { ...customWorkout, title: customWorkout.title.trim() }
+      : null
 
   const canAssign = activeWorkout && date && recipients.length > 0
 
@@ -73,7 +94,7 @@ export default function AssignWorkout() {
     try {
       let workoutDoc = activeWorkout
 
-      // If custom workout, optionally save to library first
+      // If custom, optionally save to library
       if (workoutMode === 'custom') {
         const workoutData = {
           title:       customWorkout.title.trim(),
@@ -93,45 +114,32 @@ export default function AssignWorkout() {
         }
       }
 
-      const assignmentData = {
-        workoutId:    workoutDoc.id,
-        workoutTitle: workoutDoc.title,
-        workoutType:  workoutDoc.type,
-        workoutData:  workoutDoc,
-        date,
-        dateStr,
-        runnerIds:    recipients.map((r) => r.id),
-        runnerNames:  recipients.map((r) => r.name),
-        groupName:    mode === 'group' ? selectedGroup : mode === 'all' ? 'All Runners' : '',
-        notes,
-        createdAt: serverTimestamp(),
-      }
+      // Build the workout fields in the format CalendarPage / RunnerPage expect
+      const wktFields = buildAssignmentFields(workoutDoc, notes)
 
-      const docRef = await addDoc(collection(db, 'assignments'), assignmentData)
+      // Create ONE assignment document per runner
+      const promises = recipients.map((runner) =>
+        addDoc(collection(db, 'assignments'), {
+          runnerId:     runner.id,
+          runnerName:   runner.name,
+          date,
+          dateStr,
+          ...wktFields,
+          visibilityGroup: '',
+          workoutId:    workoutDoc.id,
+          workoutTitle: workoutDoc.title,
+          workoutType:  workoutDoc.type,
+          workoutData:  workoutDoc,
+          createdAt:    serverTimestamp(),
+        })
+      )
 
-      // Build share link
-      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
-      setShareLink(`${appUrl}/#/workout/${docRef.id}`)
+      await Promise.all(promises)
 
-      // Optionally send emails
-      if (sendEmail) {
-        const emailRunners = recipients.filter((r) => r.email)
-        let emailErrors = 0
-        for (const runner of emailRunners) {
-          try {
-            await sendWorkoutEmail(runner, workoutDoc, docRef.id, dateStr, notes)
-          } catch {
-            emailErrors++
-          }
-        }
-        if (emailErrors > 0) {
-          setToast({ message: `Assignment saved. ${emailErrors} email(s) failed — check EmailJS config.`, type: 'info' })
-        } else {
-          setToast({ message: `Assignment saved and emails sent to ${emailRunners.length} runner(s)!`, type: 'success' })
-        }
-      } else {
-        setToast({ message: saveToLibrary && workoutMode === 'custom' ? 'Workout saved to library and assigned!' : 'Workout assigned successfully!', type: 'success' })
-      }
+      setToast({
+        message: `Assigned to ${recipients.length} runner${recipients.length !== 1 ? 's' : ''}${saveToLibrary && workoutMode === 'custom' ? ' — workout saved to library' : ''}!`,
+        type: 'success',
+      })
 
       // Reset form
       setSelectedWorkout(null)
@@ -141,7 +149,6 @@ export default function AssignWorkout() {
       setNotes('')
       setSelectedRunners([])
       setSelectedGroup('')
-      setSendEmail(false)
 
     } catch (err) {
       setToast({ message: 'Error: ' + err.message, type: 'error' })
@@ -154,7 +161,9 @@ export default function AssignWorkout() {
     <div className="p-8 max-w-3xl">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Assign Workout</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Choose a workout, date, and runners — then send or share.</p>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Choose a workout, date, and runners. Each runner's assignment will appear on the master calendar and their personal schedule.
+        </p>
       </div>
 
       <div className="space-y-6">
@@ -248,8 +257,7 @@ export default function AssignWorkout() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Overview / Description</label>
-                <textarea
-                  rows={2}
+                <textarea rows={2}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                   value={customWorkout.description}
                   onChange={(e) => setCustomField('description', e.target.value)}
@@ -258,8 +266,7 @@ export default function AssignWorkout() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Warm-Up</label>
-                <textarea
-                  rows={2}
+                <textarea rows={2}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                   value={customWorkout.warmup}
                   onChange={(e) => setCustomField('warmup', e.target.value)}
@@ -268,8 +275,7 @@ export default function AssignWorkout() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Main Set</label>
-                <textarea
-                  rows={4}
+                <textarea rows={4}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                   value={customWorkout.mainSet}
                   onChange={(e) => setCustomField('mainSet', e.target.value)}
@@ -278,8 +284,7 @@ export default function AssignWorkout() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cool-Down</label>
-                <textarea
-                  rows={2}
+                <textarea rows={2}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                   value={customWorkout.cooldown}
                   onChange={(e) => setCustomField('cooldown', e.target.value)}
@@ -288,16 +293,13 @@ export default function AssignWorkout() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Coach Notes</label>
-                <textarea
-                  rows={2}
+                <textarea rows={2}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                   value={customWorkout.notes}
                   onChange={(e) => setCustomField('notes', e.target.value)}
                   placeholder="Any additional notes for athletes…"
                 />
               </div>
-
-              {/* Save to library option */}
               <label className="flex items-center gap-3 cursor-pointer pt-1">
                 <input
                   type="checkbox"
@@ -305,9 +307,7 @@ export default function AssignWorkout() {
                   onChange={(e) => setSaveToLibrary(e.target.checked)}
                   className="w-4 h-4 text-brand-600 rounded"
                 />
-                <span className="text-sm text-gray-700">
-                  Also save this workout to my library for future use
-                </span>
+                <span className="text-sm text-gray-700">Also save this workout to my library for future use</span>
               </label>
             </div>
           )}
@@ -389,50 +389,29 @@ export default function AssignWorkout() {
           )}
         </Section>
 
-        {/* Step 4: Notes + Send Options */}
-        <Section step="4" title="Notes &amp; Delivery">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Assignment Notes <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
-              <textarea
-                rows={3}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any specific notes for this workout on this date…"
-              />
-            </div>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={sendEmail}
-                onChange={(e) => setSendEmail(e.target.checked)}
-                className="w-4 h-4 text-brand-600 rounded"
-              />
-              <span className="text-sm text-gray-700">
-                Send workout via email to runners with email addresses
-              </span>
-            </label>
-            {sendEmail && (
-              <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                Requires EmailJS to be configured in your .env file. See README for setup instructions.
-              </p>
-            )}
-          </div>
+        {/* Step 4: Notes */}
+        <Section step="4" title="Assignment Notes">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Notes <span className="text-gray-400 font-normal">(optional — appended to workout notes)</span>
+          </label>
+          <textarea
+            rows={3}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Any specific notes for this workout on this date…"
+          />
         </Section>
 
-        {/* Summary + Submit */}
+        {/* Summary */}
         {canAssign && (
           <div className="bg-brand-50 border border-brand-200 rounded-xl p-5">
             <p className="text-sm font-semibold text-brand-800 mb-2">Assignment Summary</p>
             <ul className="text-sm text-brand-700 space-y-1">
               <li><strong>Workout:</strong> {activeWorkout?.title}</li>
               <li><strong>Date:</strong> {date ? format(new Date(date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}</li>
-              <li><strong>Recipients:</strong> {recipients.length} runner{recipients.length !== 1 ? 's' : ''}</li>
+              <li><strong>Recipients:</strong> {recipients.length} runner{recipients.length !== 1 ? 's' : ''} — {recipients.map((r) => r.name).join(', ')}</li>
               {workoutMode === 'custom' && saveToLibrary && <li><strong>Library:</strong> Will be saved to your workout library</li>}
-              {sendEmail && <li><strong>Emails:</strong> {recipients.filter((r) => r.email).length} will be sent</li>}
             </ul>
           </div>
         )}
@@ -442,28 +421,9 @@ export default function AssignWorkout() {
           disabled={!canAssign || saving}
           className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {saving ? 'Saving…' : 'Assign Workout'}
+          {saving ? 'Saving…' : `Assign to ${recipients.length} Runner${recipients.length !== 1 ? 's' : ''}`}
         </button>
 
-        {/* Share link */}
-        {shareLink && (
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-sm font-medium text-gray-700 mb-2">Shareable link for last assignment:</p>
-            <div className="flex gap-2">
-              <input
-                readOnly
-                value={shareLink}
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs bg-gray-50 text-gray-600 font-mono"
-              />
-              <button
-                onClick={() => { navigator.clipboard.writeText(shareLink); setToast({ message: 'Link copied!', type: 'success' }) }}
-                className="bg-brand-600 hover:bg-brand-700 text-white px-3 py-2 rounded-lg text-xs font-medium"
-              >
-                Copy
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
