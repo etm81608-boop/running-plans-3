@@ -12,6 +12,7 @@ import AssignWorkout from './pages/AssignWorkout'
 import PublicWorkout from './pages/PublicWorkout'
 import RunnerPage from './pages/RunnerPage'
 import RunnerLogs from './pages/RunnerLogs'
+import DataExport from './pages/DataExport'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="assign" element={<AssignWorkout />} />
             <Route path="logs" element={<RunnerLogs />} />
+            <Route path="export" element={<DataExport />} />
           </Route>
         </Routes>
       </AuthProvider>
