@@ -11,13 +11,27 @@ import { EVENTS, GRADES } from '../utils/constants'
 const EMPTY_RUNNER = {
   name: '', grade: '', email: '', phone: '',
   primaryEvent: '', group: '', yearsRunning: '',
+  visibilityGroup: '',
   prs: {},
+}
+
+const VG_COLORS = {
+  1: 'bg-violet-100 text-violet-700',
+  2: 'bg-sky-100 text-sky-700',
+  3: 'bg-emerald-100 text-emerald-700',
+  4: 'bg-orange-100 text-orange-700',
+  5: 'bg-rose-100 text-rose-700',
 }
 
 const PR_EVENTS = [
   '100m','200m','400m','800m','1500m','1 Mile','3000m','5K','2 Mile',
   '100m Hurdles','400m Hurdles','Cross Country 5K',
 ]
+
+function runnerLink(runnerId) {
+  const base = import.meta.env.VITE_APP_URL || window.location.origin
+  return `${base}/#/runner/${runnerId}`
+}
 
 export default function Roster() {
   const { docs: runners } = useCollection('runners', 'name')
@@ -54,16 +68,23 @@ export default function Roster() {
     })
   }
 
+  function copyRunnerLink(runner) {
+    const link = runnerLink(runner.id)
+    navigator.clipboard.writeText(link)
+    setToast({ message: `Link for ${runner.name} copied!`, type: 'success' })
+  }
+
   async function save() {
     const data = {
-      name:         current.name.trim(),
-      grade:        current.grade,
-      email:        current.email.trim(),
-      phone:        current.phone.trim(),
-      primaryEvent: current.primaryEvent,
-      group:        current.group,
-      yearsRunning: current.yearsRunning,
-      prs:          current.prs || {},
+      name:            current.name.trim(),
+      grade:           current.grade,
+      email:           current.email.trim(),
+      phone:           current.phone.trim(),
+      primaryEvent:    current.primaryEvent,
+      group:           current.group,
+      yearsRunning:    current.yearsRunning,
+      visibilityGroup: current.visibilityGroup ? parseInt(current.visibilityGroup, 10) : null,
+      prs:             current.prs || {},
     }
     if (!data.name) return
 
@@ -136,6 +157,7 @@ export default function Roster() {
                 <th className="px-5 py-3 text-left">Group</th>
                 <th className="px-5 py-3 text-left">Yrs Running</th>
                 <th className="px-5 py-3 text-left">Email</th>
+                <th className="px-5 py-3 text-left">Visibility</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -152,7 +174,22 @@ export default function Roster() {
                   <td className="px-5 py-3 text-gray-600">{r.group || '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{r.yearsRunning || '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{r.email || '—'}</td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3">
+                    {r.visibilityGroup
+                      ? <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${VG_COLORS[r.visibilityGroup] || 'bg-gray-100 text-gray-600'}`}>Group {r.visibilityGroup}</span>
+                      : <span className="text-gray-300 text-xs">Off</span>}
+                  </td>
+                  <td className="px-5 py-3 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => copyRunnerLink(r)}
+                      title={runnerLink(r.id)}
+                      className="text-gray-400 hover:text-brand-600 mr-3"
+                      aria-label="Copy runner schedule link"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                    </button>
                     <button onClick={() => openEdit(r)} className="text-brand-600 hover:text-brand-800 mr-3 font-medium">Edit</button>
                     <button onClick={() => openDelete(r)} className="text-red-500 hover:text-red-700 font-medium">Delete</button>
                   </td>
@@ -209,6 +246,28 @@ export default function Roster() {
               {groups.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
             </select>
           </div>
+          <div className="col-span-2">
+            <label className="label">Workout Visibility Group</label>
+            <p className="text-xs text-gray-400 mb-2">Runners with the same number can see each other's workouts on their schedule page. Leave off to keep workouts private.</p>
+            <div className="flex gap-2 flex-wrap">
+              {['', 1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => set('visibilityGroup', n)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    (current.visibilityGroup === n || (n === '' && !current.visibilityGroup))
+                      ? n === ''
+                        ? 'bg-gray-800 text-white border-gray-800'
+                        : `border-transparent text-white ${['','bg-violet-600','bg-sky-600','bg-emerald-600','bg-orange-600','bg-rose-600'][n]}`
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+                  }`}
+                >
+                  {n === '' ? 'Off' : `Group ${n}`}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* PRs */}
           <div className="col-span-2 mt-2">
@@ -254,6 +313,7 @@ export default function Roster() {
             ['Group',        current.group || '—'],
             ['Email',        current.email || '—'],
             ['Phone',        current.phone || '—'],
+            ['Visibility',   current.visibilityGroup ? `Group ${current.visibilityGroup}` : 'Off (private)'],
           ].map(([label, val]) => (
             <div key={label} className="flex gap-4">
               <dt className="w-32 font-medium text-gray-500 shrink-0">{label}</dt>
@@ -273,6 +333,24 @@ export default function Roster() {
             </div>
           )}
         </dl>
+
+        {/* Schedule link in view modal */}
+        {current.id && (
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 mb-2">ATHLETE SCHEDULE LINK</p>
+            <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+              <p className="text-xs text-gray-500 font-mono flex-1 truncate">{runnerLink(current.id)}</p>
+              <button
+                onClick={() => copyRunnerLink(current)}
+                className="text-brand-600 hover:text-brand-800 text-xs font-semibold flex-shrink-0"
+              >
+                Copy
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">Send this link to {current.name} — they can bookmark it to see their workouts anytime.</p>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end gap-3">
           <button onClick={close} className="btn-secondary">Close</button>
           <button onClick={() => setModal('edit')} className="btn-primary">Edit</button>
