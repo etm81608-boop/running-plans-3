@@ -1,89 +1,332 @@
-import { useRef, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import FullCalendar from '@fullcalendar/react'
-import dayGridPlugin  from '@fullcalendar/daygrid'
-import listPlugin     from '@fullcalendar/list'
-import interactionPlugin from '@fullcalendar/interaction'
-import { deleteDoc, doc } from 'firebase/firestore'
+import dayGridPlugin      from '@fullcalendar/daygrid'
+import listPlugin         from '@fullcalendar/list'
+import interactionPlugin  from '@fullcalendar/interaction'
+import {
+  collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp,
+} from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
-import { getWorkoutTypeLabel, getWorkoutTypeColor, getWorkoutCalendarColor } from '../utils/constants'
 import { format } from 'date-fns'
-import { Link } from 'react-router-dom'
+
+// Turn "Ava Thompson" → "AT"
+function getInitials(name = '') {
+  return name.trim().split(/\s+/).map((w) => w[0]?.toUpperCase() ?? '').join('')
+}
+
+// Palette — each runner gets a consistent color
+const PALETTE = [
+  '#4f46e5','#10b981','#f97316','#ef4444','#a855f7',
+  '#0ea5e9','#f59e0b','#14b8a6','#ec4899','#84cc16',
+  '#6366f1','#e11d48','#0891b2','#7c3aed','#16a34a',
+]
+
+const EMPTY_FORM = {
+  runnerId: '', date: '',
+  warmup: '', mainWorkout: '', cooldown: '', crossTraining: '', notes: '',
+}
 
 export default function CalendarPage() {
   const { docs: assignments } = useCollection('assignments', 'date')
+  const { docs: runners }     = useCollection('runners',     'name')
+  const { docs: templates }   = useCollection('workouts',    'createdAt')
 
-  const [selected, setSelected] = useState(null)
-  const [toast,    setToast]    = useState(null)
-  const calendarRef = useRef(null)
+  const [modalOpen,        setModalOpen]        = useState(false)
+  const [isEditing,        setIsEditing]        = useState(false)
+  const [currentId,        setCurrentId]        = useState(null)
+  const [form,             setForm]             = useState(EMPTY_FORM)
+  const [toast,            setToast]            = useState(null)
+  const [saving,           setSaving]           = useState(false)
+  const [shareLink,        setShareLink]        = useState('')
+  const [showShareLink,    setShowShareLink]    = useState(false)
+  const [confirmDelete,    setConfirmDelete]    = useState(false)
+  const [showHistory,      setShowHistory]      = useState(false)
+  const [hoveredDate,      setHoveredDate]      = useState(null)
+  const [popoverPos,       setPopoverPos]       = useState({ x: 0, y: 0 })
+  const hideTimer = useRef(null)
 
+  // Print schedule state
+  const [printModal,  setPrintModal]  = useState(false)
+  const [printStart,  setPrintStart]  = useState('')
+  const [printEnd,    setPrintEnd]    = useState('')
+
+  // Assign each runner a consistent color
+  const runnerColorMap = useMemo(() => {
+    const map = {}
+    runners.forEach((r, i) => { map[r.id] = PALETTE[i % PALETTE.length] })
+    return map
+  }, [runners])
+
+  // FullCalendar events — show initials as the event label
   const events = assignments.map((a) => ({
     id:              a.id,
-    title:           a.workoutTitle || 'Workout',
+    title:           getInitials(a.runnerName) || '?',
     date:            a.date,
-    backgroundColor: getWorkoutCalendarColor(a.workoutType),
-    borderColor:     getWorkoutCalendarColor(a.workoutType),
-    extendedProps:   a,
+    backgroundColor: runnerColorMap[a.runnerId] || '#4f46e5',
+    borderColor:     runnerColorMap[a.runnerId] || '#4f46e5',
+    extendedProps:   { ...a, id: a.id },
   }))
 
+  // Group assignments by date for the hover popover
+  const assignmentsByDate = useMemo(() => {
+    const map = {}
+    assignments.forEach((a) => {
+      if (!a.date) return
+      if (!map[a.date]) map[a.date] = []
+      map[a.date].push(a)
+    })
+    return map
+  }, [assignments])
+
+  // dayCellDidMount — attach hover listeners to every day cell
+  function handleDayCellMount(arg) {
+    const dateStr = arg.date.toISOString().split('T')[0]
+    arg.el.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimer.current)
+      const rect = arg.el.getBoundingClientRect()
+      // Position popover to the right, or left if too close to the edge
+      const x = rect.right + 8 + 280 > window.innerWidth
+        ? rect.left - 288
+        : rect.right + 8
+      setPopoverPos({ x, y: rect.top })
+      setHoveredDate(dateStr)
+    })
+    arg.el.addEventListener('mouseleave', () => {
+      hideTimer.current = setTimeout(() => setHoveredDate(null), 200)
+    })
+  }
+
+  // Click empty date → new workout
+  function handleDateClick(info) {
+    setForm({ ...EMPTY_FORM, date: info.dateStr })
+    setIsEditing(false)
+    setCurrentId(null)
+    setShowShareLink(false)
+    setConfirmDelete(false)
+    setModalOpen(true)
+  }
+
+  // Click existing event → edit
   function handleEventClick(info) {
-    setSelected(info.event.extendedProps)
+    const a = info.event.extendedProps
+    setForm({
+      runnerId:     a.runnerId     || '',
+      date:         a.date         || '',
+      warmup:       a.warmup       || '',
+      mainWorkout:  a.mainWorkout  || '',
+      cooldown:     a.cooldown     || '',
+      crossTraining:a.crossTraining|| '',
+      notes:        a.notes        || '',
+    })
+    setCurrentId(a.id)
+    setIsEditing(true)
+    setShowShareLink(false)
+    setConfirmDelete(false)
+    setModalOpen(true)
+  }
+
+  function set(field, val) {
+    setForm((f) => ({ ...f, [field]: val }))
+  }
+
+  // Load a saved template into the form
+  function loadTemplate(templateId) {
+    if (!templateId) return
+    const t = templates.find((x) => x.id === templateId)
+    if (t) {
+      setForm((f) => ({
+        ...f,
+        warmup:        t.warmup        || '',
+        mainWorkout:   t.mainWorkout   || t.mainSet || '',
+        cooldown:      t.cooldown      || '',
+        crossTraining: t.crossTraining || '',
+      }))
+    }
+  }
+
+  async function handleSave() {
+    if (!form.runnerId || !form.date) return
+    setSaving(true)
+    const runner = runners.find((r) => r.id === form.runnerId)
+
+    const data = {
+      runnerId:      form.runnerId,
+      runnerName:    runner?.name || '',
+      date:          form.date,
+      warmup:        form.warmup.trim(),
+      mainWorkout:   form.mainWorkout.trim(),
+      cooldown:      form.cooldown.trim(),
+      crossTraining: form.crossTraining.trim(),
+      notes:         form.notes.trim(),
+      // Keep for share-link / public page compatibility
+      workoutTitle:  form.mainWorkout.trim().slice(0, 60) || 'Workout',
+      runnerIds:     [form.runnerId],
+      runnerNames:   [runner?.name || ''],
+    }
+
+    try {
+      if (isEditing && currentId) {
+        await updateDoc(doc(db, 'assignments', currentId), data)
+        setToast({ message: 'Workout updated!', type: 'success' })
+        setModalOpen(false)
+      } else {
+        const docRef = await addDoc(collection(db, 'assignments'), {
+          ...data, createdAt: serverTimestamp(),
+        })
+        const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
+        setShareLink(`${appUrl}/#/workout/${docRef.id}`)
+        setShowShareLink(true)
+        setToast({ message: 'Workout saved!', type: 'success' })
+        setModalOpen(false)
+      }
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete() {
-    if (!selected) return
+    if (!currentId) return
     try {
-      await deleteDoc(doc(db, 'assignments', selected.id))
-      setToast({ message: 'Assignment deleted.', type: 'info' })
-      setSelected(null)
+      await deleteDoc(doc(db, 'assignments', currentId))
+      setToast({ message: 'Workout removed.', type: 'info' })
+      setModalOpen(false)
+      setConfirmDelete(false)
     } catch (err) {
       setToast({ message: err.message, type: 'error' })
     }
   }
 
   function copyLink() {
-    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
-    const link   = `${appUrl}/#/workout/${selected.id}`
-    navigator.clipboard.writeText(link)
-    setToast({ message: 'Share link copied!', type: 'success' })
+    navigator.clipboard.writeText(shareLink)
+    setToast({ message: 'Link copied!', type: 'success' })
   }
+
+  function generatePrint() {
+    if (!printStart || !printEnd || printStart > printEnd) return
+
+    // Build list of every date in range
+    const dates = []
+    let cur = new Date(printStart + 'T12:00:00')
+    const end = new Date(printEnd   + 'T12:00:00')
+    while (cur <= end) {
+      dates.push(cur.toISOString().split('T')[0])
+      cur = new Date(cur.getTime() + 86400000)
+    }
+
+    // Filter assignments to the range
+    const rangeAssignments = assignments.filter(
+      (a) => a.date >= printStart && a.date <= printEnd
+    )
+
+    // Build lookup: runnerId → date → assignment
+    const lookup = {}
+    rangeAssignments.forEach((a) => {
+      if (!lookup[a.runnerId]) lookup[a.runnerId] = {}
+      lookup[a.runnerId][a.date] = a
+    })
+
+    // Unique runners who appear in this range, sorted by name
+    const runnerIds = [...new Set(rangeAssignments.map((a) => a.runnerId))]
+    const printRunners = runners
+      .filter((r) => runnerIds.includes(r.id))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    const dateHeaders = dates.map((d) =>
+      `<th>${format(new Date(d + 'T12:00:00'), 'EEE')}<br/><span style="font-weight:400">${format(new Date(d + 'T12:00:00'), 'M/d')}</span></th>`
+    ).join('')
+
+    const rows = printRunners.map((r) => {
+      const cells = dates.map((d) => {
+        const a = lookup[r.id]?.[d]
+        if (!a) return '<td style="color:#ccc;text-align:center;vertical-align:middle;">—</td>'
+        const parts = []
+        if (a.warmup)        parts.push(`<div><b style="color:#166534">WU:</b> ${a.warmup}</div>`)
+        if (a.mainWorkout)   parts.push(`<div><b style="color:#3730a3">Main:</b> ${a.mainWorkout}</div>`)
+        if (a.cooldown)      parts.push(`<div><b style="color:#1e40af">CD:</b> ${a.cooldown}</div>`)
+        if (a.crossTraining) parts.push(`<div><b style="color:#115e59">XT:</b> ${a.crossTraining}</div>`)
+        if (a.notes)         parts.push(`<div style="color:#92400e;font-style:italic">${a.notes}</div>`)
+        return `<td style="vertical-align:top">${parts.join('')}</td>`
+      }).join('')
+      return `<tr><td style="font-weight:700;white-space:nowrap;background:#f5f5f5;padding:6px 10px">${r.name}</td>${cells}</tr>`
+    }).join('')
+
+    const html = `<!DOCTYPE html><html><head><title>Team Workout Schedule</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 9px; margin: 0; padding: 16px; }
+  h1  { font-size: 15px; margin: 0 0 2px; color: #1e1b4b; }
+  .sub { font-size: 11px; color: #6b7280; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { background: #3730a3; color: white; padding: 7px 5px; text-align: center;
+       font-size: 9px; border: 1px solid #c7d2fe; line-height: 1.3; }
+  th.name-col { text-align: left; width: 110px; }
+  td { padding: 5px; border: 1px solid #e5e7eb; font-size: 8.5px; line-height: 1.5; }
+  div { margin-bottom: 2px; }
+  @page { size: landscape; margin: 1cm; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<h1>Team Workout Schedule</h1>
+<p class="sub">${format(new Date(printStart + 'T12:00:00'), 'MMMM d')} – ${format(new Date(printEnd + 'T12:00:00'), 'MMMM d, yyyy')}</p>
+<table>
+  <thead><tr><th class="name-col">Runner</th>${dateHeaders}</tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+</body></html>`
+
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 600)
+    setPrintModal(false)
+  }
+
+  const selectedRunner = runners.find((r) => r.id === form.runnerId)
+  const dateLabel = form.date
+    ? format(new Date(form.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')
+    : ''
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Master Calendar</h1>
-          <p className="text-sm text-gray-500 mt-0.5">All scheduled workouts across your team.</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Click any date to add a workout. Click an existing workout to edit it.
+          </p>
         </div>
-        <Link to="/assign" className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          + Assign Workout
-        </Link>
+        <button
+          onClick={() => setPrintModal(true)}
+          className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          Print Schedule
+        </button>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-5">
-        {[
-          { color: '#22c55e', label: 'Easy Run' },
-          { color: '#f97316', label: 'Tempo' },
-          { color: '#ef4444', label: 'Interval' },
-          { color: '#a855f7', label: 'Long Run' },
-          { color: '#eab308', label: 'Race' },
-          { color: '#14b8a6', label: 'Strength' },
-          { color: '#3b82f6', label: 'Time Trial' },
-          { color: '#9ca3af', label: 'Rest' },
-        ].map(({ color, label }) => (
-          <span key={label} className="flex items-center gap-1.5 text-xs text-gray-600">
-            <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: color }} />
-            {label}
-          </span>
-        ))}
-      </div>
+      {/* Runner color legend */}
+      {runners.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-5">
+          {runners.map((r) => (
+            <span key={r.id} className="flex items-center gap-1.5 text-xs text-gray-600">
+              <span
+                className="w-3 h-3 rounded-full inline-block flex-shrink-0"
+                style={{ backgroundColor: runnerColorMap[r.id] }}
+              />
+              {r.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <FullCalendar
-          ref={calendarRef}
           plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           headerToolbar={{
@@ -93,82 +336,290 @@ export default function CalendarPage() {
           }}
           buttonText={{ listMonth: 'List' }}
           events={events}
+          dateClick={handleDateClick}
           eventClick={handleEventClick}
+          dayCellDidMount={handleDayCellMount}
           height="auto"
-          eventTimeFormat={{ hour: undefined }}
           displayEventTime={false}
+          eventDisplay="block"
         />
       </div>
 
-      {/* Assignment Detail Modal */}
+      {/* Share link banner (after saving new workout) */}
+      {showShareLink && shareLink && (
+        <div className="mt-4 bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-700 mb-1">Shareable link for last workout:</p>
+            <p className="text-xs font-mono text-gray-500 truncate">{shareLink}</p>
+          </div>
+          <button
+            onClick={copyLink}
+            className="bg-brand-600 hover:bg-brand-700 text-white px-3 py-2 rounded-lg text-xs font-medium flex-shrink-0"
+          >
+            Copy Link
+          </button>
+          <button onClick={() => setShowShareLink(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Day hover popover */}
+      {hoveredDate && assignmentsByDate[hoveredDate]?.length > 0 && (
+        <div
+          style={{ position: 'fixed', left: popoverPos.x, top: popoverPos.y, zIndex: 9999, width: 280 }}
+          className="bg-white rounded-2xl shadow-2xl border border-gray-200 p-4"
+          onMouseEnter={() => clearTimeout(hideTimer.current)}
+          onMouseLeave={() => setHoveredDate(null)}
+        >
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+            {format(new Date(hoveredDate + 'T12:00:00'), 'EEEE, MMMM d')}
+          </p>
+          <div className="space-y-3">
+            {assignmentsByDate[hoveredDate].map((a) => (
+              <div key={a.id} className="flex items-start gap-2.5">
+                <div
+                  className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0"
+                  style={{ backgroundColor: runnerColorMap[a.runnerId] || '#4f46e5' }}
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">{a.runnerName}</p>
+                  {(a.mainWorkout || a.workoutTitle) && (
+                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+                      ⚡ {a.mainWorkout || a.workoutTitle}
+                    </p>
+                  )}
+                  {a.warmup && (
+                    <p className="text-xs text-gray-400 line-clamp-1">🔥 {a.warmup}</p>
+                  )}
+                  {a.cooldown && (
+                    <p className="text-xs text-gray-400 line-clamp-1">❄️ {a.cooldown}</p>
+                  )}
+                  {a.crossTraining && (
+                    <p className="text-xs text-gray-400 line-clamp-1">💪 {a.crossTraining}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-brand-500 mt-3 font-medium">Click a workout to edit it</p>
+        </div>
+      )}
+
+      {/* Create / Edit Workout Modal */}
       <Modal
-        isOpen={!!selected}
-        onClose={() => setSelected(null)}
-        title={selected?.workoutTitle || 'Workout'}
-        size="md"
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); setConfirmDelete(false) }}
+        title={isEditing ? `Edit Workout — ${selectedRunner?.name || ''}` : 'New Workout'}
+        size="xl"
       >
-        {selected && (
-          <div className="space-y-4 text-sm">
-            <div className="flex flex-wrap gap-3">
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getWorkoutTypeColor(selected.workoutType)}`}>
-                {getWorkoutTypeLabel(selected.workoutType)}
-              </span>
-              <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-                {selected.date ? format(new Date(selected.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}
-              </span>
-            </div>
+        {/* Two-column layout: form on left, history on right */}
+        <div className="flex gap-6">
 
-            {/* Runners */}
+          {/* ── LEFT: Workout form ── */}
+          <div className="flex-1 min-w-0 space-y-4">
+
+            {/* Runner selector */}
             <div>
-              <p className="font-medium text-gray-700 mb-1">Assigned to</p>
-              <p className="text-gray-600">
-                {Array.isArray(selected.runnerNames) && selected.runnerNames.length > 0
-                  ? selected.runnerNames.join(', ')
-                  : selected.groupName || 'All runners'}
-              </p>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Runner <span className="text-red-400">*</span>
+              </label>
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                value={form.runnerId}
+                onChange={(e) => set('runnerId', e.target.value)}
+              >
+                <option value="">— select a runner —</option>
+                {runners.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}{r.group ? ` (${r.group})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Workout detail */}
-            {selected.workoutData && (
-              <>
-                {selected.workoutData.description && (
-                  <div>
-                    <p className="font-medium text-gray-700 mb-1">Overview</p>
-                    <p className="text-gray-600">{selected.workoutData.description}</p>
-                  </div>
-                )}
-                {selected.workoutData.warmup && <WorkoutSection title="Warm-Up"   content={selected.workoutData.warmup} />}
-                {selected.workoutData.mainSet && <WorkoutSection title="Main Set"  content={selected.workoutData.mainSet} />}
-                {selected.workoutData.cooldown && <WorkoutSection title="Cool-Down" content={selected.workoutData.cooldown} />}
-                {selected.workoutData.targetPace && (
-                  <p className="text-gray-500"><span className="font-medium">Target pace:</span> {selected.workoutData.targetPace}</p>
-                )}
-              </>
-            )}
+            {/* Date */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Date <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => set('date', e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              />
+              {dateLabel && <p className="text-xs text-gray-400 mt-1">{dateLabel}</p>}
+            </div>
 
-            {selected.notes && (
+            {/* Load from template */}
+            {templates.length > 0 && (
               <div>
-                <p className="font-medium text-gray-700 mb-1">Coach Notes</p>
-                <p className="text-gray-600 whitespace-pre-wrap">{selected.notes}</p>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Load template <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  onChange={(e) => loadTemplate(e.target.value)}
+                  defaultValue=""
+                >
+                  <option value="">— choose a template —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name || t.title}</option>
+                  ))}
+                </select>
               </div>
             )}
 
-            <div className="pt-4 flex flex-wrap gap-3 border-t border-gray-100">
-              <button
-                onClick={copyLink}
-                className="flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-800 font-medium"
-              >
-                Copy Share Link
-              </button>
-              <button
-                onClick={handleDelete}
-                className="ml-auto text-sm text-red-500 hover:text-red-700 font-medium"
-              >
-                Delete Assignment
-              </button>
+            <div className="border-t border-gray-100 pt-1" />
+
+            {/* Warm-Up */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">🔥 Warm-Up</label>
+              <textarea rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                placeholder="e.g. 10 min easy jog, drills, strides"
+                value={form.warmup} onChange={(e) => set('warmup', e.target.value)} />
+            </div>
+
+            {/* Main Workout */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">⚡ Main Workout</label>
+              <textarea rows={4}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                placeholder="e.g. 6 × 800m at 5K pace, 2 min rest"
+                value={form.mainWorkout} onChange={(e) => set('mainWorkout', e.target.value)} />
+            </div>
+
+            {/* Cool-Down */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">❄️ Cool-Down</label>
+              <textarea rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                placeholder="e.g. 10 min easy, stretching"
+                value={form.cooldown} onChange={(e) => set('cooldown', e.target.value)} />
+            </div>
+
+            {/* Cross Training */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">💪 Cross Training</label>
+              <textarea rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                placeholder="e.g. Core circuit, hip strength"
+                value={form.crossTraining} onChange={(e) => set('crossTraining', e.target.value)} />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Coach Notes <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <textarea rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                placeholder="Any notes for this athlete on this day…"
+                value={form.notes} onChange={(e) => set('notes', e.target.value)} />
             </div>
           </div>
-        )}
+
+          {/* ── RIGHT: Runner history ── */}
+          <div className="w-64 flex-shrink-0 border-l border-gray-100 pl-5">
+            <p className="text-sm font-semibold text-gray-700 mb-3 sticky top-0 bg-white pt-1">
+              {selectedRunner ? `${selectedRunner.name}'s recent workouts` : 'Select a runner to see history'}
+            </p>
+            {!form.runnerId ? (
+              <p className="text-xs text-gray-400 italic">Past workouts will appear here once you select a runner.</p>
+            ) : (
+              <RunnerHistory
+                runnerId={form.runnerId}
+                currentDate={form.date}
+                assignments={assignments}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-6 flex items-center justify-between gap-3 flex-wrap">
+          {/* Delete (edit mode only) */}
+          {isEditing && (
+            <div>
+              {!confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="text-sm text-red-500 hover:text-red-700 font-medium"
+                >
+                  Delete workout
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-red-600 font-medium">Are you sure?</span>
+                  <button onClick={handleDelete} className="text-sm bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg font-medium">Yes, delete</button>
+                  <button onClick={() => setConfirmDelete(false)} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-3 ml-auto">
+            <button
+              onClick={() => { setModalOpen(false); setConfirmDelete(false) }}
+              className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !form.runnerId || !form.date}
+              className="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Workout'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Print Schedule Modal */}
+      <Modal isOpen={printModal} onClose={() => setPrintModal(false)} title="Print Workout Schedule" size="sm">
+        <p className="text-sm text-gray-500 mb-4">
+          Choose a date range. A printable table will open in a new tab with every runner's workouts across the selected days. Use your browser's <strong>Save as PDF</strong> option in the print dialog.
+        </p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Start Date</label>
+            <input
+              type="date"
+              value={printStart}
+              onChange={(e) => setPrintStart(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">End Date</label>
+            <input
+              type="date"
+              value={printEnd}
+              min={printStart}
+              onChange={(e) => setPrintEnd(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            onClick={() => setPrintModal(false)}
+            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={generatePrint}
+            disabled={!printStart || !printEnd || printStart > printEnd}
+            className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Generate &amp; Print
+          </button>
+        </div>
       </Modal>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -176,11 +627,55 @@ export default function CalendarPage() {
   )
 }
 
-function WorkoutSection({ title, content }) {
+// ── Runner History Panel ──────────────────────────────────────────────────────
+function RunnerHistory({ runnerId, currentDate, assignments }) {
+  // Get all past workouts for this runner, sorted newest first
+  const history = useMemo(() => {
+    return assignments
+      .filter((a) => {
+        if (a.runnerId !== runnerId) return false
+        if (!a.date) return false
+        // Only show workouts before (or on the same day as) the current date
+        if (currentDate && a.date > currentDate) return false
+        return true
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      .slice(0, 12) // show up to 12 recent workouts
+  }, [assignments, runnerId, currentDate])
+
+  if (history.length === 0) {
+    return (
+      <p className="text-xs text-gray-400 italic">No previous workouts found for this runner.</p>
+    )
+  }
+
   return (
-    <div>
-      <p className="font-medium text-gray-700 mb-1">{title}</p>
-      <div className="bg-gray-50 rounded-lg p-3 text-gray-600 whitespace-pre-wrap">{content}</div>
+    <div className="space-y-3 overflow-y-auto max-h-[480px] pr-1">
+      {history.map((a) => (
+        <div key={a.id} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
+          <p className="text-xs font-bold text-brand-700 mb-1">
+            {a.date ? format(new Date(a.date + 'T12:00:00'), 'EEE, MMM d') : ''}
+          </p>
+          {(a.mainWorkout || a.workoutTitle) && (
+            <p className="text-xs font-semibold text-gray-800 mb-1 line-clamp-2">
+              ⚡ {a.mainWorkout || a.workoutTitle}
+            </p>
+          )}
+          {a.warmup && (
+            <p className="text-xs text-gray-500 line-clamp-1">🔥 {a.warmup}</p>
+          )}
+          {a.cooldown && (
+            <p className="text-xs text-gray-500 line-clamp-1">❄️ {a.cooldown}</p>
+          )}
+          {a.crossTraining && (
+            <p className="text-xs text-gray-500 line-clamp-1">💪 {a.crossTraining}</p>
+          )}
+          {a.notes && (
+            <p className="text-xs text-gray-400 italic mt-1 line-clamp-1">📝 {a.notes}</p>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
+
