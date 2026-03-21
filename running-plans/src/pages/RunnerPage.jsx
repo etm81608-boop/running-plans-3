@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, addDoc, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
+import { format, parseISO, startOfDay, addDays, startOfWeek, isPast } from 'date-fns'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,9 @@ function weekDays(mondayStr) {
   return Array.from({ length: 7 }, (_, i) =>
     addDays(base, i).toISOString().split('T')[0]
   )
+}
+function addWeeks(mondayStr, n) {
+  return addDays(parseISO(mondayStr + 'T12:00:00'), n * 7).toISOString().split('T')[0]
 }
 
 // ── Meet data ─────────────────────────────────────────────────────────────────
@@ -54,8 +57,8 @@ const ALL_MEETS = [
   { id: 'm5',  date: '2026-04-24', name: 'Penn Relays',                    location: 'Franklin Field, Philadelphia',        home: false, level: 'MS' },
   { id: 'm6',  date: '2026-04-27', name: 'EA @ Springside Chestnut Hill',  location: 'Springside Chestnut Hill Academy',   home: false, level: 'MS' },
   { id: 'm7',  date: '2026-04-30', name: 'Haverford School @ EA',          location: 'Greenwood Track',                    home: true,  level: 'MS' },
-  { id: 'm8',  date: '2026-05-04', name: 'IAAL Championship',              location: 'TBD',                                home: false, level: 'MS',      championship: true },
-  { id: 'm9',  date: '2026-05-20', name: 'DELCO Champs',                   location: 'Rap Curry Athletic Complex',         home: false, level: 'MS',      championship: true },
+  { id: 'm8',  date: '2026-05-04', name: 'IAAL Championship',              location: 'TBD',                                home: false, level: 'MS', championship: true },
+  { id: 'm9',  date: '2026-05-20', name: 'DELCO Champs',                   location: 'Rap Curry Athletic Complex',         home: false, level: 'MS', championship: true },
 ]
 
 const MEETS_BY_DATE = {}
@@ -79,7 +82,7 @@ export default function RunnerPage() {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
   })
   const [logOpenDate, setLogOpenDate] = useState(null)
-  const [showPast,    setShowPast]    = useState(false)
+  const [showPastMeets, setShowPastMeets] = useState(false)
 
   function markLogged(assignmentId) {
     setLoggedIds((prev) => {
@@ -133,42 +136,35 @@ export default function RunnerPage() {
     return map
   }, [assignments])
 
-  const [currentMonday, setCurrentMonday] = useState(() => getMondayOf(today))
-  const days = useMemo(() => weekDays(currentMonday), [currentMonday])
-
-  const hasPrev = useMemo(
-    () => assignments.some((a) => a.date < currentMonday),
-    [assignments, currentMonday]
-  )
-  const hasNext = useMemo(
-    () => assignments.some((a) => a.date > days[6]),
-    [assignments, days]
-  )
-
-  function goNextWeek() {
-    setCurrentMonday(addDays(parseISO(currentMonday + 'T12:00:00'), 7).toISOString().split('T')[0])
-    setLogOpenDate(null)
-  }
-  function goPrevWeek() {
-    setCurrentMonday(addDays(parseISO(currentMonday + 'T12:00:00'), -7).toISOString().split('T')[0])
-    setLogOpenDate(null)
-  }
+  // 4 weeks: 1 back, this week, +1, +2
+  const weeks = useMemo(() => {
+    const thisMonday = getMondayOf(today)
+    const startMonday = addWeeks(thisMonday, -1)
+    return [0, 1, 2, 3].map((i) => {
+      const monday = addWeeks(startMonday, i)
+      const days   = weekDays(monday)
+      let label = ''
+      if (i === 0) label = 'Last Week'
+      else if (i === 1) label = 'This Week'
+      else if (i === 2) label = 'Next Week'
+      else label = 'In Two Weeks'
+      return { monday, days, label }
+    })
+  }, [today])
 
   const upcomingCount = useMemo(
     () => assignments.filter((a) => a.date >= today).length,
     [assignments, today]
   )
-  const pastAssignments = useMemo(
-    () => [...assignments.filter((a) => a.date < currentMonday)].sort((a, b) => b.date.localeCompare(a.date)),
-    [assignments, currentMonday]
-  )
+
+  const upcomingMeets = ALL_MEETS.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+  const pastMeets     = ALL_MEETS.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))
 
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 flex items-center justify-center">
       <p className="text-white/60">Loading your schedule…</p>
     </div>
   )
-
   if (error) return (
     <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 flex items-center justify-center p-6">
       <div className="text-center text-white">
@@ -177,12 +173,6 @@ export default function RunnerPage() {
       </div>
     </div>
   )
-
-  const hasAnyWorkoutThisWeek = days.some((d) => assignmentByDate[d])
-  const upcomingMeets = ALL_MEETS
-    .filter((m) => m.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 px-4 py-8">
@@ -219,212 +209,214 @@ export default function RunnerPage() {
             </div>
           </div>
           <div className="flex gap-5 text-sm text-white/70">
-            <span>📅 {upcomingCount} upcoming</span>
+            <span>📅 {upcomingCount} upcoming workouts</span>
             <span>✅ {loggedIds.length} logged</span>
           </div>
         </div>
       </div>
 
-      {/* Weekly grid card */}
-      <div className="max-w-7xl mx-auto mb-6">
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+      {/* 4-week workout grids */}
+      {weeks.map(({ monday, days, label }) => (
+        <div key={monday} className="max-w-7xl mx-auto mb-5">
+          {/* Week label */}
+          <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-2 px-1">
+            {label} · {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d')}
+          </p>
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <div className="grid grid-cols-7 min-w-[700px]">
 
-          {/* Week nav header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <button onClick={goPrevWeek} disabled={!hasPrev}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <p className="text-base font-semibold text-gray-700">
-              {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d, yyyy')}
-            </p>
-            <button onClick={goNextWeek} disabled={!hasNext}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-
-          {/* 7-column grid */}
-          <div className="overflow-x-auto">
-            <div className="grid grid-cols-7 min-w-[700px]">
-
-              {/* Date headers */}
-              {days.map((dateStr) => {
-                const d       = parseISO(dateStr + 'T12:00:00')
-                const isToday = dateStr === today
-                const isPast  = dateStr < today
-                const hasWkt  = !!assignmentByDate[dateStr]
-                const hasMeet = !!MEETS_BY_DATE[dateStr]
-                return (
-                  <div key={dateStr} className={`text-center py-3 px-2 border-b border-r border-gray-100 last:border-r-0 ${
-                    isToday ? 'bg-brand-600 text-white'
-                    : hasWkt && !isPast ? 'bg-brand-50 text-brand-700'
-                    : isPast ? 'bg-gray-50 text-gray-500'
-                    : 'bg-gray-50 text-gray-300'
-                  }`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{format(d, 'EEE')}</p>
-                    <p className="text-2xl font-bold leading-none mt-0.5">{format(d, 'd')}</p>
-                    <p className="text-xs opacity-70 mt-0.5">{format(d, 'MMM')}</p>
-                    {hasMeet && (
-                      <div className="mt-1 w-2 h-2 rounded-full bg-red-400 mx-auto" title="Meet day" />
-                    )}
-                  </div>
-                )
-              })}
-
-              {/* Workout content */}
-              {days.map((dateStr) => {
-                const a        = assignmentByDate[dateStr]
-                const isPast   = dateStr < today
-                const isToday  = dateStr === today
-                const isLogged = a ? loggedIds.includes(a.id) : false
-                const logOpen  = logOpenDate === dateStr
-                const dayMeets = MEETS_BY_DATE[dateStr] || []
-
-                return (
-                  <div key={dateStr} className={`border-r border-gray-100 last:border-r-0 flex flex-col ${isToday ? 'bg-brand-50/40' : 'bg-white'}`}>
-                    <div className="flex-1 flex flex-col p-3 gap-2">
-
-                      {/* Meet badges */}
-                      {dayMeets.map((meet) => (
-                        <div key={meet.id} className={`rounded-lg border p-2 ${meet.championship ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                          <p className={`text-xs font-bold mb-0.5 ${meet.championship ? 'text-amber-700' : 'text-red-700'}`}>
-                            {meet.championship ? '🏆' : '🏟️'} {meet.level === 'MS' ? 'MS — ' : ''}{meet.name}
-                          </p>
-                          <p className="text-xs text-gray-600">📍 {meet.location}</p>
-                          <p className="text-xs text-gray-500">{meet.home ? '🏠 Home' : '✈️ Away'}</p>
-                        </div>
-                      ))}
-
-                      {a ? (
-                        <>
-                          {/* Status badge */}
-                          <div className="flex justify-center">
-                            {isLogged
-                              ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
-                              : isPast
-                                ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
-                                : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2 py-0.5 rounded-full">Upcoming</span>
-                            }
-                          </div>
-                          {a.warmup       && <DayBlock emoji="🔥" label="Warm-Up"    content={a.warmup}       bg="bg-green-50"  border="border-green-200"  text="text-green-800" />}
-                          {a.mainWorkout  && <DayBlock emoji="⚡" label="Main"       content={a.mainWorkout}  bg="bg-indigo-50" border="border-indigo-200" text="text-indigo-800" />}
-                          {a.cooldown     && <DayBlock emoji="❄️" label="Cool-Down"  content={a.cooldown}     bg="bg-blue-50"   border="border-blue-200"   text="text-blue-800" />}
-                          {a.crossTraining && <DayBlock emoji="💪" label="Cross"     content={a.crossTraining} bg="bg-teal-50"  border="border-teal-200"   text="text-teal-800" />}
-                          {a.notes        && <DayBlock emoji="📝" label="Notes"      content={a.notes}        bg="bg-amber-50"  border="border-amber-200"  text="text-amber-800" />}
-                          {!a.warmup && !a.mainWorkout && !a.cooldown && !a.crossTraining && !a.notes && (
-                            <p className="text-xs text-gray-400 text-center py-2 italic">Rest / recovery</p>
-                          )}
-
-                          {/* Training partners */}
-                          {(peersByDate[dateStr] || []).length > 0 && (
-                            <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-2">
-                              <p className="text-xs font-bold text-indigo-500 mb-1">👯 Partners</p>
-                              {peersByDate[dateStr].map((p) => (
-                                <div key={p.id} className="text-xs text-indigo-700 font-medium truncate">
-                                  {p.runnerName}
-                                  {p.mainWorkout && <span className="text-indigo-400 font-normal"> — {p.mainWorkout.slice(0, 40)}</span>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Log section */}
-                          <div className="mt-auto pt-2">
-                            {isLogged ? (
-                              <LogSummary assignmentId={a.id} />
-                            ) : (
-                              <>
-                                {!logOpen && (
-                                  <button onClick={() => setLogOpenDate(dateStr)}
-                                    className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
-                                    📋 Log Activity
-                                  </button>
-                                )}
-                                {logOpen && (
-                                  <LogForm assignmentId={a.id} assignment={a}
-                                    onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
-                                    onCancel={() => setLogOpenDate(null)} compact />
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        !dayMeets.length && (
-                          <div className="flex-1 flex items-center justify-center py-8">
-                            <p className="text-xs text-gray-300 italic">Rest day</p>
-                          </div>
-                        )
-                      )}
+                {/* Date headers */}
+                {days.map((dateStr) => {
+                  const d       = parseISO(dateStr + 'T12:00:00')
+                  const isToday = dateStr === today
+                  const isPastDay = dateStr < today
+                  const hasWkt  = !!assignmentByDate[dateStr]
+                  const hasMeet = !!MEETS_BY_DATE[dateStr]
+                  return (
+                    <div key={dateStr} className={`text-center py-3 px-2 border-b border-r border-gray-100 last:border-r-0 ${
+                      isToday        ? 'bg-brand-600 text-white'
+                      : hasWkt && !isPastDay ? 'bg-brand-50 text-brand-700'
+                      : isPastDay    ? 'bg-gray-50 text-gray-400'
+                      : 'bg-gray-50 text-gray-300'
+                    }`}>
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{format(d, 'EEE')}</p>
+                      <p className="text-2xl font-bold leading-none mt-0.5">{format(d, 'd')}</p>
+                      <p className="text-xs opacity-70 mt-0.5">{format(d, 'MMM')}</p>
+                      {hasMeet && <div className="mt-1 w-2 h-2 rounded-full bg-red-400 mx-auto" />}
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+
+                {/* Workout + meet content */}
+                {days.map((dateStr) => {
+                  const a        = assignmentByDate[dateStr]
+                  const isPastDay = dateStr < today
+                  const isToday  = dateStr === today
+                  const isLogged = a ? loggedIds.includes(a.id) : false
+                  const logOpen  = logOpenDate === dateStr
+                  const dayMeets = MEETS_BY_DATE[dateStr] || []
+
+                  return (
+                    <div key={dateStr} className={`border-r border-gray-100 last:border-r-0 flex flex-col ${isToday ? 'bg-brand-50/40' : 'bg-white'}`}>
+                      <div className="flex-1 flex flex-col p-3 gap-2">
+
+                        {/* Meet badges */}
+                        {dayMeets.map((meet) => (
+                          <div key={meet.id} className={`rounded-lg border p-2 ${meet.championship ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                            <p className={`text-xs font-bold mb-0.5 ${meet.championship ? 'text-amber-700' : 'text-red-700'}`}>
+                              {meet.championship ? '🏆' : '🏟️'} {meet.level === 'MS' ? 'MS — ' : ''}{meet.name}
+                            </p>
+                            <p className="text-xs text-gray-600">📍 {meet.location}</p>
+                            <p className="text-xs text-gray-500">{meet.home ? '🏠 Home' : '✈️ Away'}</p>
+                          </div>
+                        ))}
+
+                        {a ? (
+                          <>
+                            <div className="flex justify-center">
+                              {isLogged
+                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
+                                : isPastDay
+                                  ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
+                                  : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2 py-0.5 rounded-full">Upcoming</span>
+                              }
+                            </div>
+                            {a.warmup        && <DayBlock emoji="🔥" label="Warm-Up"   content={a.warmup}        bg="bg-green-50"  border="border-green-200"  text="text-green-800" />}
+                            {a.mainWorkout   && <DayBlock emoji="⚡" label="Main"      content={a.mainWorkout}   bg="bg-indigo-50" border="border-indigo-200" text="text-indigo-800" />}
+                            {a.cooldown      && <DayBlock emoji="❄️" label="Cool-Down" content={a.cooldown}      bg="bg-blue-50"   border="border-blue-200"   text="text-blue-800" />}
+                            {a.crossTraining && <DayBlock emoji="💪" label="Cross"     content={a.crossTraining} bg="bg-teal-50"   border="border-teal-200"   text="text-teal-800" />}
+                            {a.notes         && <DayBlock emoji="📝" label="Notes"     content={a.notes}         bg="bg-amber-50"  border="border-amber-200"  text="text-amber-800" />}
+                            {!a.warmup && !a.mainWorkout && !a.cooldown && !a.crossTraining && !a.notes && (
+                              <p className="text-xs text-gray-400 text-center py-2 italic">Rest / recovery</p>
+                            )}
+
+                            {(peersByDate[dateStr] || []).length > 0 && (
+                              <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-2">
+                                <p className="text-xs font-bold text-indigo-500 mb-1">👯 Partners</p>
+                                {peersByDate[dateStr].map((p) => (
+                                  <div key={p.id} className="text-xs text-indigo-700 font-medium truncate">
+                                    {p.runnerName}
+                                    {p.mainWorkout && <span className="text-indigo-400 font-normal"> — {p.mainWorkout.slice(0, 40)}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-auto pt-2">
+                              {isLogged ? (
+                                <LogSummary assignmentId={a.id} />
+                              ) : (
+                                <>
+                                  {!logOpen && (
+                                    <button onClick={() => setLogOpenDate(dateStr)}
+                                      className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
+                                      📋 Log Activity
+                                    </button>
+                                  )}
+                                  {logOpen && (
+                                    <LogForm assignmentId={a.id} assignment={a}
+                                      onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
+                                      onCancel={() => setLogOpenDate(null)} compact />
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          !dayMeets.length && (
+                            <div className="flex-1 flex items-center justify-center py-6">
+                              <p className="text-xs text-gray-300 italic">Rest</p>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
+        </div>
+      ))}
 
-          {!hasAnyWorkoutThisWeek && !days.some((d) => MEETS_BY_DATE[d]) && (
-            <p className="text-center text-gray-400 text-sm py-6 px-4">No workouts scheduled this week</p>
+      {/* Full season meet schedule */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
+          <p className="text-white font-black text-lg mb-4">🏟️ Season Meet Schedule</p>
+
+          {/* Upcoming meets */}
+          {upcomingMeets.length > 0 && (
+            <div className="mb-4">
+              <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">Upcoming</p>
+              <div className="space-y-2">
+                {upcomingMeets.map((meet) => (
+                  <MeetRow key={meet.id} meet={meet} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Past meets */}
+          {pastMeets.length > 0 && (
+            <div>
+              <button
+                onClick={() => setShowPastMeets((v) => !v)}
+                className="w-full flex items-center justify-between text-white/50 hover:text-white/70 text-xs font-bold uppercase tracking-widest mb-2 transition-colors"
+              >
+                <span>Completed ({pastMeets.length})</span>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showPastMeets && (
+                <div className="space-y-2 opacity-50">
+                  {pastMeets.map((meet) => (
+                    <MeetRow key={meet.id} meet={meet} />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Upcoming meets strip */}
-      {upcomingMeets.length > 0 && (
-        <div className="max-w-7xl mx-auto mb-6">
-          <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-4">
-            <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-3">🏟️ Upcoming Meets</p>
-            <div className="space-y-2">
-              {upcomingMeets.map((meet) => (
-                <div key={meet.id} className="flex items-center gap-3">
-                  <div className={`flex-shrink-0 w-10 text-center rounded-lg py-1 ${meet.championship ? 'bg-amber-400/30' : 'bg-white/20'}`}>
-                    <p className="text-white/60 text-xs">{format(parseISO(meet.date + 'T12:00:00'), 'MMM')}</p>
-                    <p className="text-white font-black text-sm leading-none">{format(parseISO(meet.date + 'T12:00:00'), 'd')}</p>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold truncate">{meet.championship ? '🏆 ' : ''}{meet.name}</p>
-                    <p className="text-white/50 text-xs truncate">{meet.location} · {meet.home ? 'Home' : 'Away'}</p>
-                  </div>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                    meet.level === 'MS' ? 'bg-purple-400/30 text-purple-200' : 'bg-red-400/30 text-red-200'
-                  }`}>
-                    {meet.level === 'MS' ? 'MS' : 'Varsity'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Past workouts */}
-      {pastAssignments.length > 0 && (
-        <div className="max-w-7xl mx-auto mb-6">
-          <button onClick={() => setShowPast((v) => !v)}
-            className="w-full flex items-center justify-between bg-white/10 hover:bg-white/20 text-white rounded-2xl px-5 py-3 text-sm font-medium transition-colors">
-            <span>Past workouts ({pastAssignments.length})</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${showPast ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {showPast && (
-            <div className="mt-2 space-y-2">
-              {pastAssignments.map((a) => (
-                <PastWorkoutCard key={a.id} assignment={a} isLogged={loggedIds.includes(a.id)} onLogged={() => markLogged(a.id)} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       <p className="text-center text-white/30 text-xs pb-4 max-w-7xl mx-auto">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
+    </div>
+  )
+}
+
+// ── Meet Row (runner-facing) ──────────────────────────────────────────────────
+
+function MeetRow({ meet }) {
+  const d = parseISO(meet.date + 'T12:00:00')
+  return (
+    <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
+      <div className={`flex-shrink-0 w-10 text-center rounded-lg py-1 ${meet.championship ? 'bg-amber-400/40' : 'bg-white/20'}`}>
+        <p className="text-white/60 text-xs">{format(d, 'MMM')}</p>
+        <p className="text-white font-black text-sm leading-none">{format(d, 'd')}</p>
+        <p className="text-white/50 text-xs">{format(d, 'EEE')}</p>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-sm font-semibold truncate">
+          {meet.championship ? '🏆 ' : ''}{meet.name}
+        </p>
+        <p className="text-white/50 text-xs truncate">{meet.location}</p>
+      </div>
+      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+          meet.level === 'MS' ? 'bg-purple-400/30 text-purple-200' : 'bg-red-400/30 text-red-200'
+        }`}>
+          {meet.level === 'MS' ? 'MS' : 'Varsity'}
+        </span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+          meet.home ? 'bg-emerald-400/30 text-emerald-200' : 'bg-orange-400/30 text-orange-200'
+        }`}>
+          {meet.home ? 'Home' : 'Away'}
+        </span>
+      </div>
     </div>
   )
 }
@@ -444,9 +436,7 @@ function DayBlock({ emoji, label, content, bg, border, text }) {
 
 function LogSummary({ assignmentId }) {
   const log = getStoredLog(assignmentId)
-  if (!log) {
-    return <p className="text-xs text-emerald-600 font-semibold text-center py-1">✅ Logged!</p>
-  }
+  if (!log) return <p className="text-xs text-emerald-600 font-semibold text-center py-1">✅ Logged!</p>
   return (
     <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 space-y-1">
       <p className="text-xs font-bold text-emerald-600">✅ Your Log</p>
@@ -488,7 +478,7 @@ function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false
         runnerName:  assignment.runnerName || '',
         date:        assignment.date       || '',
         ...logData,
-        rpe:         logData.rpe ? parseInt(logData.rpe, 10) : null,
+        rpe: logData.rpe ? parseInt(logData.rpe, 10) : null,
         submittedAt: serverTimestamp(),
       })
       storeLog(assignmentId, logData)
@@ -535,60 +525,6 @@ function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false
           className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100 border border-gray-200">✕</button>
       </div>
     </form>
-  )
-}
-
-// ── Past Workout Card ─────────────────────────────────────────────────────────
-
-function PastWorkoutCard({ assignment: a, isLogged, onLogged }) {
-  const [open,        setOpen]        = useState(false)
-  const [logFormOpen, setLogFormOpen] = useState(false)
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)}
-        className="w-full text-left px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 transition-colors">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-semibold text-gray-900 text-sm">{format(parseISO(a.date + 'T12:00:00'), 'EEE M/d')}</span>
-            {isLogged
-              ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
-              : <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
-            }
-          </div>
-          {a.mainWorkout
-            ? <p className="text-sm text-gray-600 line-clamp-2">⚡ {a.mainWorkout}</p>
-            : <p className="text-sm text-gray-400 italic">Rest / recovery</p>
-          }
-        </div>
-        <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 mt-1 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && (
-        <div className="border-t border-gray-100 px-5 py-4 space-y-3">
-          {a.warmup        && <Block emoji="🔥" title="Warm-Up"        content={a.warmup}        color="bg-green-50 border-green-100" />}
-          {a.mainWorkout   && <Block emoji="⚡" title="Main Workout"   content={a.mainWorkout}   color="bg-brand-50 border-brand-100" />}
-          {a.cooldown      && <Block emoji="❄️" title="Cool-Down"      content={a.cooldown}      color="bg-blue-50 border-blue-100" />}
-          {a.crossTraining && <Block emoji="💪" title="Cross Training" content={a.crossTraining} color="bg-teal-50 border-teal-100" />}
-          {a.notes         && <Block emoji="📝" title="Coach's Notes"  content={a.notes}         color="bg-amber-50 border-amber-100" />}
-          <div className="border-t border-gray-100 pt-3 bg-gray-50 -mx-5 px-5 pb-1">
-            {isLogged ? (
-              <LogSummary assignmentId={a.id} />
-            ) : logFormOpen ? (
-              <LogForm assignmentId={a.id} assignment={a}
-                onLogged={() => { onLogged(); setLogFormOpen(false) }}
-                onCancel={() => setLogFormOpen(false)} />
-            ) : (
-              <button onClick={() => setLogFormOpen(true)}
-                className="w-full text-sm bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-xl font-semibold transition-colors">
-                📋 Log Activity
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
   )
 }
 
