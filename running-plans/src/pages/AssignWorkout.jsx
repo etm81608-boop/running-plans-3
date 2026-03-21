@@ -4,28 +4,39 @@ import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import { sendWorkoutEmail } from '../utils/emailService'
 import Toast from '../components/Toast'
-import { getWorkoutTypeLabel, getWorkoutTypeColor } from '../utils/constants'
+import { WORKOUT_TYPES, getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
 import { format } from 'date-fns'
+
+const EMPTY_CUSTOM = {
+  title: '', type: 'easy', description: '',
+  warmup: '', mainSet: '', cooldown: '', targetPace: '', notes: '',
+}
 
 export default function AssignWorkout() {
   const { docs: workouts } = useCollection('workouts', 'createdAt')
   const { docs: runners }  = useCollection('runners',  'name')
   const { docs: groups }   = useCollection('groups',   'name')
 
-  // Step 1: workout
+  // Step 1: workout source
+  const [workoutMode, setWorkoutMode]   = useState('library') // 'library' | 'custom'
   const [selectedWorkout, setSelectedWorkout] = useState(null)
+  const [customWorkout, setCustomWorkout]     = useState(EMPTY_CUSTOM)
+  const [saveToLibrary, setSaveToLibrary]     = useState(false)
+
   // Step 2: date
   const [date, setDate] = useState('')
+
   // Step 3: recipients
-  const [mode, setMode]                 = useState('group') // 'group'|'individual'|'all'
+  const [mode, setMode]                       = useState('group')
   const [selectedGroup, setSelectedGroup]     = useState('')
   const [selectedRunners, setSelectedRunners] = useState([])
-  // Step 4: options
-  const [notes,      setNotes]      = useState('')
-  const [sendEmail,  setSendEmail]  = useState(false)
 
-  const [saving,  setSaving]  = useState(false)
-  const [toast,   setToast]   = useState(null)
+  // Step 4: options
+  const [notes,     setNotes]     = useState('')
+  const [sendEmail, setSendEmail] = useState(false)
+
+  const [saving,    setSaving]    = useState(false)
+  const [toast,     setToast]     = useState(null)
   const [shareLink, setShareLink] = useState('')
 
   // Derived recipient list
@@ -42,19 +53,52 @@ export default function AssignWorkout() {
     )
   }
 
+  function setCustomField(field, value) {
+    setCustomWorkout((prev) => ({ ...prev, [field]: value }))
+  }
+
+  // Determine the "active" workout for the summary
+  const activeWorkout = workoutMode === 'library' ? selectedWorkout
+    : customWorkout.title.trim() ? { ...customWorkout, title: customWorkout.title.trim() }
+    : null
+
+  const canAssign = activeWorkout && date && recipients.length > 0
+
   async function handleAssign() {
-    if (!selectedWorkout || !date || recipients.length === 0) return
+    if (!activeWorkout || !date || recipients.length === 0) return
     setSaving(true)
 
     const dateStr = format(new Date(date + 'T12:00:00'), 'MMMM d, yyyy')
 
     try {
+      let workoutDoc = activeWorkout
+
+      // If custom workout, optionally save to library first
+      if (workoutMode === 'custom') {
+        const workoutData = {
+          title:       customWorkout.title.trim(),
+          type:        customWorkout.type,
+          description: customWorkout.description.trim(),
+          warmup:      customWorkout.warmup.trim(),
+          mainSet:     customWorkout.mainSet.trim(),
+          cooldown:    customWorkout.cooldown.trim(),
+          targetPace:  customWorkout.targetPace.trim(),
+          notes:       customWorkout.notes.trim(),
+        }
+        if (saveToLibrary) {
+          const ref = await addDoc(collection(db, 'workouts'), { ...workoutData, createdAt: serverTimestamp() })
+          workoutDoc = { ...workoutData, id: ref.id }
+        } else {
+          workoutDoc = { ...workoutData, id: `custom_${Date.now()}` }
+        }
+      }
+
       const assignmentData = {
-        workoutId:    selectedWorkout.id,
-        workoutTitle: selectedWorkout.title,
-        workoutType:  selectedWorkout.type,
-        workoutData:  selectedWorkout,          // snapshot of workout
-        date,                                    // yyyy-MM-dd
+        workoutId:    workoutDoc.id,
+        workoutTitle: workoutDoc.title,
+        workoutType:  workoutDoc.type,
+        workoutData:  workoutDoc,
+        date,
         dateStr,
         runnerIds:    recipients.map((r) => r.id),
         runnerNames:  recipients.map((r) => r.name),
@@ -66,9 +110,8 @@ export default function AssignWorkout() {
       const docRef = await addDoc(collection(db, 'assignments'), assignmentData)
 
       // Build share link
-      const appUrl    = import.meta.env.VITE_APP_URL || window.location.origin
-      const link      = `${appUrl}/#/workout/${docRef.id}`
-      setShareLink(link)
+      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
+      setShareLink(`${appUrl}/#/workout/${docRef.id}`)
 
       // Optionally send emails
       if (sendEmail) {
@@ -76,7 +119,7 @@ export default function AssignWorkout() {
         let emailErrors = 0
         for (const runner of emailRunners) {
           try {
-            await sendWorkoutEmail(runner, selectedWorkout, docRef.id, dateStr, notes)
+            await sendWorkoutEmail(runner, workoutDoc, docRef.id, dateStr, notes)
           } catch {
             emailErrors++
           }
@@ -87,11 +130,13 @@ export default function AssignWorkout() {
           setToast({ message: `Assignment saved and emails sent to ${emailRunners.length} runner(s)!`, type: 'success' })
         }
       } else {
-        setToast({ message: 'Workout assigned successfully!', type: 'success' })
+        setToast({ message: saveToLibrary && workoutMode === 'custom' ? 'Workout saved to library and assigned!' : 'Workout assigned successfully!', type: 'success' })
       }
 
       // Reset form
       setSelectedWorkout(null)
+      setCustomWorkout(EMPTY_CUSTOM)
+      setSaveToLibrary(false)
       setDate('')
       setNotes('')
       setSelectedRunners([])
@@ -105,8 +150,6 @@ export default function AssignWorkout() {
     }
   }
 
-  const canAssign = selectedWorkout && date && recipients.length > 0
-
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-8">
@@ -118,29 +161,154 @@ export default function AssignWorkout() {
 
         {/* Step 1: Workout */}
         <Section step="1" title="Choose a Workout">
-          {workouts.length === 0 ? (
-            <p className="text-sm text-gray-400">No workouts yet. Build your library first.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {workouts.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => setSelectedWorkout(w)}
-                  className={`text-left p-4 rounded-xl border-2 transition-colors ${
-                    selectedWorkout?.id === w.id
-                      ? 'border-brand-500 bg-brand-50'
-                      : 'border-gray-200 hover:border-brand-200 bg-white'
-                  }`}
-                >
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getWorkoutTypeColor(w.type)}`}>
-                    {getWorkoutTypeLabel(w.type)}
-                  </span>
-                  <p className="font-medium text-gray-900 mt-1">{w.title}</p>
-                  {w.description && (
-                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{w.description}</p>
-                  )}
-                </button>
-              ))}
+
+          {/* Toggle: Library vs Custom */}
+          <div className="flex gap-2 mb-5">
+            <button
+              onClick={() => { setWorkoutMode('library'); setSelectedWorkout(null) }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                workoutMode === 'library' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              From Library
+            </button>
+            <button
+              onClick={() => { setWorkoutMode('custom'); setSelectedWorkout(null) }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                workoutMode === 'custom' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              + Create Custom
+            </button>
+          </div>
+
+          {/* Library picker */}
+          {workoutMode === 'library' && (
+            workouts.length === 0 ? (
+              <p className="text-sm text-gray-400">No workouts yet. Use "Create Custom" or build your library first.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {workouts.map((w) => (
+                  <button
+                    key={w.id}
+                    onClick={() => setSelectedWorkout(w)}
+                    className={`text-left p-4 rounded-xl border-2 transition-colors ${
+                      selectedWorkout?.id === w.id
+                        ? 'border-brand-500 bg-brand-50'
+                        : 'border-gray-200 hover:border-brand-200 bg-white'
+                    }`}
+                  >
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getWorkoutTypeColor(w.type)}`}>
+                      {getWorkoutTypeLabel(w.type)}
+                    </span>
+                    <p className="font-medium text-gray-900 mt-1">{w.title}</p>
+                    {w.description && (
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{w.description}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Custom workout builder */}
+          {workoutMode === 'custom' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                  <input
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                    value={customWorkout.title}
+                    onChange={(e) => setCustomField('title', e.target.value)}
+                    placeholder="e.g. Tuesday Tempo 4 miles"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                    value={customWorkout.type}
+                    onChange={(e) => setCustomField('type', e.target.value)}
+                  >
+                    {WORKOUT_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Pace / Time</label>
+                  <input
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                    value={customWorkout.targetPace}
+                    onChange={(e) => setCustomField('targetPace', e.target.value)}
+                    placeholder="e.g. 7:30/mile"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Overview / Description</label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                  value={customWorkout.description}
+                  onChange={(e) => setCustomField('description', e.target.value)}
+                  placeholder="Brief overview of the session…"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Warm-Up</label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                  value={customWorkout.warmup}
+                  onChange={(e) => setCustomField('warmup', e.target.value)}
+                  placeholder="e.g. 10 min easy jog, dynamic drills"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Main Set</label>
+                <textarea
+                  rows={4}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                  value={customWorkout.mainSet}
+                  onChange={(e) => setCustomField('mainSet', e.target.value)}
+                  placeholder="e.g. 6 x 800m @ 5K pace, 90 sec rest between each"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cool-Down</label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                  value={customWorkout.cooldown}
+                  onChange={(e) => setCustomField('cooldown', e.target.value)}
+                  placeholder="e.g. 10 min easy jog, stretching"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Coach Notes</label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                  value={customWorkout.notes}
+                  onChange={(e) => setCustomField('notes', e.target.value)}
+                  placeholder="Any additional notes for athletes…"
+                />
+              </div>
+
+              {/* Save to library option */}
+              <label className="flex items-center gap-3 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={saveToLibrary}
+                  onChange={(e) => setSaveToLibrary(e.target.checked)}
+                  className="w-4 h-4 text-brand-600 rounded"
+                />
+                <span className="text-sm text-gray-700">
+                  Also save this workout to my library for future use
+                </span>
+              </label>
             </div>
           )}
         </Section>
@@ -157,7 +325,6 @@ export default function AssignWorkout() {
 
         {/* Step 3: Recipients */}
         <Section step="3" title="Select Recipients">
-          {/* Mode tabs */}
           <div className="flex gap-2 mb-4">
             {[
               { key: 'all',        label: 'All Runners' },
@@ -261,9 +428,10 @@ export default function AssignWorkout() {
           <div className="bg-brand-50 border border-brand-200 rounded-xl p-5">
             <p className="text-sm font-semibold text-brand-800 mb-2">Assignment Summary</p>
             <ul className="text-sm text-brand-700 space-y-1">
-              <li><strong>Workout:</strong> {selectedWorkout?.title}</li>
+              <li><strong>Workout:</strong> {activeWorkout?.title}</li>
               <li><strong>Date:</strong> {date ? format(new Date(date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}</li>
               <li><strong>Recipients:</strong> {recipients.length} runner{recipients.length !== 1 ? 's' : ''}</li>
+              {workoutMode === 'custom' && saveToLibrary && <li><strong>Library:</strong> Will be saved to your workout library</li>}
               {sendEmail && <li><strong>Emails:</strong> {recipients.filter((r) => r.email).length} will be sent</li>}
             </ul>
           </div>
