@@ -13,6 +13,7 @@ import PublicWorkout from './pages/PublicWorkout'
 import RunnerPage from './pages/RunnerPage'
 import RunnerLogs from './pages/RunnerLogs'
 import DataExport from './pages/DataExport'
+import Meets from './pages/Meets'
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="assign" element={<AssignWorkout />} />
             <Route path="logs" element={<RunnerLogs />} />
             <Route path="export" element={<DataExport />} />
+            <Route path="meets" element={<Meets />} />
           </Route>
         </Routes>
       </AuthProvider>
