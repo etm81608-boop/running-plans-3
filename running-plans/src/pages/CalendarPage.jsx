@@ -17,6 +17,37 @@ function getInitials(name = '') {
   return name.trim().split(/\s+/).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 
+// ── Meet data (shown as calendar events) ─────────────────────────────────────
+
+const ALL_MEETS = [
+  // Varsity
+  { id: 'v1',  date: '2026-03-21', name: 'Upper Darby Relays',            location: 'Upper Darby High School',            home: false, level: 'Varsity' },
+  { id: 'v2',  date: '2026-03-27', name: 'Neshaminy Distance Festival',    location: 'Neshaminy High School',              home: false, level: 'Varsity' },
+  { id: 'v3',  date: '2026-04-08', name: 'Multi-Team Meet',                location: 'William Penn Charter School',        home: false, level: 'Varsity' },
+  { id: 'v4',  date: '2026-04-10', name: 'Haverford Distance Night',       location: 'Haverford High School',              home: false, level: 'Varsity' },
+  { id: 'v5',  date: '2026-04-11', name: 'DELCO Relays',                   location: 'Marple Newtown High School',         home: false, level: 'Varsity' },
+  { id: 'v6',  date: '2026-04-11', name: 'Brooks Fords Track Classic',     location: 'Haverford High School',              home: false, level: 'Varsity' },
+  { id: 'v7',  date: '2026-04-15', name: 'Home Multi-Team Meet',           location: 'Greenwood Track',                    home: true,  level: 'Varsity' },
+  { id: 'v8',  date: '2026-04-18', name: 'Kellerman Relays',               location: 'Great Valley High School',           home: false, level: 'Varsity' },
+  { id: 'v9',  date: '2026-04-23', name: 'Penn Relays — Day 1',            location: 'Franklin Field, Philadelphia',        home: false, level: 'Varsity' },
+  { id: 'v10', date: '2026-04-24', name: 'Penn Relays — Day 2',            location: 'Franklin Field, Philadelphia',        home: false, level: 'Varsity' },
+  { id: 'v11', date: '2026-04-29', name: 'Away Dual/Tri Meet',             location: 'Germantown Academy',                 home: false, level: 'Varsity' },
+  { id: 'v12', date: '2026-04-30', name: 'DELCO Champs — Day 1',           location: 'Upper Darby High School',            home: false, level: 'Varsity', championship: true },
+  { id: 'v13', date: '2026-05-02', name: 'DELCO Champs — Day 2',           location: 'Rap Curry Athletic Complex',         home: false, level: 'Varsity', championship: true },
+  { id: 'v14', date: '2026-05-09', name: 'Inter-Ac Track Champs',          location: 'Greenwood Track',                    home: true,  level: 'Varsity', championship: true },
+  { id: 'v15', date: '2026-05-16', name: 'PAISAA Championship',            location: 'Malvern Preparatory School',         home: false, level: 'Varsity', championship: true },
+  // Middle School
+  { id: 'm1',  date: '2026-04-02', name: 'EA @ Penn Charter',              location: 'William Penn Charter School',        home: false, level: 'MS' },
+  { id: 'm2',  date: '2026-04-08', name: 'Penn Relay Qualifier',           location: 'William Penn Charter School',        home: false, level: 'MS' },
+  { id: 'm3',  date: '2026-04-13', name: 'MP & St. Anne\'s @ EA',          location: 'Greenwood Track',                    home: true,  level: 'MS' },
+  { id: 'm4',  date: '2026-04-23', name: 'EA & Notre Dame @ GA',           location: 'Germantown Academy',                 home: false, level: 'MS' },
+  { id: 'm5',  date: '2026-04-24', name: 'Penn Relays',                    location: 'Franklin Field, Philadelphia',        home: false, level: 'MS' },
+  { id: 'm6',  date: '2026-04-27', name: 'EA @ Springside Chestnut Hill',  location: 'Springside Chestnut Hill Academy',   home: false, level: 'MS' },
+  { id: 'm7',  date: '2026-04-30', name: 'Haverford School @ EA',          location: 'Greenwood Track',                    home: true,  level: 'MS' },
+  { id: 'm8',  date: '2026-05-04', name: 'IAAL Championship',              location: 'TBD',                                home: false, level: 'MS',      championship: true },
+  { id: 'm9',  date: '2026-05-20', name: 'DELCO Champs',                   location: 'Rap Curry Athletic Complex',         home: false, level: 'MS',      championship: true },
+]
+
 // Palette — each runner gets a consistent color
 const PALETTE = [
   '#4f46e5','#10b981','#f97316','#ef4444','#a855f7',
@@ -70,15 +101,30 @@ export default function CalendarPage() {
     return map
   }, [runners])
 
-  // FullCalendar events — show initials as the event label
-  const events = assignments.map((a) => ({
+  // FullCalendar events — workout assignments + meets
+  const [meetModal, setMeetModal] = useState(null) // holds the meet object when clicked
+
+  const workoutEvents = assignments.map((a) => ({
     id:              a.id,
     title:           getInitials(a.runnerName) || '?',
     date:            a.date,
     backgroundColor: runnerColorMap[a.runnerId] || '#4f46e5',
     borderColor:     runnerColorMap[a.runnerId] || '#4f46e5',
-    extendedProps:   { ...a, id: a.id },
+    extendedProps:   { ...a, id: a.id, _type: 'workout' },
   }))
+
+  const meetEvents = ALL_MEETS.map((m) => ({
+    id:              m.id,
+    title:           `${m.level === 'MS' ? '🏃 MS' : '🏟️'} ${m.name}`,
+    date:            m.date,
+    backgroundColor: m.championship ? '#b45309' : '#be123c',
+    borderColor:     m.championship ? '#92400e' : '#9f1239',
+    textColor:       '#ffffff',
+    extendedProps:   { ...m, _type: 'meet' },
+    display:         'block',
+  }))
+
+  const events = [...workoutEvents, ...meetEvents]
 
   // Group assignments by date for the hover popover
   const assignmentsByDate = useMemo(() => {
@@ -119,9 +165,13 @@ export default function CalendarPage() {
     setModalOpen(true)
   }
 
-  // Click existing event → edit
+  // Click existing event → edit workout or show meet detail
   function handleEventClick(info) {
     const a = info.event.extendedProps
+    if (a._type === 'meet') {
+      setMeetModal(a)
+      return
+    }
     setForm({
       runnerId:        a.runnerId        || '',
       date:            a.date            || '',
@@ -676,6 +726,50 @@ export default function CalendarPage() {
       </Modal>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* Meet detail modal */}
+      {meetModal && (
+        <Modal
+          isOpen={!!meetModal}
+          onClose={() => setMeetModal(null)}
+          title={meetModal.championship ? `🏆 ${meetModal.name}` : `🏟️ ${meetModal.name}`}
+          size="sm"
+        >
+          <div className="space-y-3 text-sm">
+            <div className="flex gap-2 flex-wrap">
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                meetModal.level === 'MS' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700'
+              }`}>
+                {meetModal.level === 'MS' ? '🏃 Middle School' : '🏟️ Girls Varsity'}
+              </span>
+              {meetModal.championship && (
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">🏆 Championship</span>
+              )}
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                meetModal.home ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'
+              }`}>
+                {meetModal.home ? '🏠 Home' : '✈️ Away'}
+              </span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Date</p>
+              <p className="text-gray-800 font-medium">{format(new Date(meetModal.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Location</p>
+              <p className="text-gray-800">{meetModal.location}</p>
+            </div>
+          </div>
+          <div className="mt-5 flex justify-end">
+            <button
+              onClick={() => setMeetModal(null)}
+              className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
