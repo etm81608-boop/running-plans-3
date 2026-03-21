@@ -48,6 +48,14 @@ const nav = [
     ),
   },
   {
+    to: '/meets', label: 'Meet Schedule',
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+      </svg>
+    ),
+  },
+  {
     to: '/assign', label: 'Bulk Assign',
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -80,13 +88,30 @@ export default function Sidebar() {
 
   return (
     <aside className="w-64 flex-shrink-0 bg-brand-800 text-white flex flex-col h-screen sticky top-0">
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-brand-700">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🏃</span>
+      {/* Logo / School Header */}
+      <div className="px-5 py-5 border-b border-brand-700">
+        <div className="flex items-center gap-3">
+          {/* EA Logo — replace the src URL below with the actual EA logo URL */}
+          <img
+            src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
+            alt="Episcopal Academy"
+            className="w-12 h-12 object-contain flex-shrink-0"
+            onError={(e) => {
+              e.target.style.display = 'none'
+              e.target.nextSibling.style.display = 'flex'
+            }}
+          />
+          {/* Fallback crest if logo URL fails to load */}
+          <div
+            style={{ display: 'none' }}
+            className="w-12 h-12 rounded-full bg-white flex items-center justify-center flex-shrink-0"
+          >
+            <span className="text-brand-800 font-black text-lg leading-none">EA</span>
+          </div>
           <div>
-            <p className="font-bold text-lg leading-tight">Team Running</p>
-            <p className="text-brand-300 text-xs">Coach Dashboard</p>
+            <p className="font-black text-sm leading-tight text-white">Episcopal Academy</p>
+            <p className="text-brand-200 text-xs font-semibold leading-tight">Women's XC & Track</p>
+            <p className="text-brand-400 text-xs mt-0.5">Coach Dashboard</p>
           </div>
         </div>
       </div>
@@ -129,4 +154,5 @@ export default function Sidebar() {
     </aside>
   )
 }
+
 
