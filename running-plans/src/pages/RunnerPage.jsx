@@ -4,29 +4,35 @@ import {
   collection, query, where, getDocs, addDoc, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { format, isAfter, isBefore, startOfDay, parseISO, startOfWeek, endOfWeek } from 'date-fns'
+import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Same localStorage key format used by PublicWorkout.jsx
+function getStoredLog(assignmentId) {
+  try { return JSON.parse(localStorage.getItem(`wlog_${assignmentId}`) || 'null') } catch { return null }
+}
+function storeLog(assignmentId, data) {
+  try { localStorage.setItem(`wlog_${assignmentId}`, JSON.stringify(data)) } catch {}
+}
 
 function getInitials(name = '') {
   return name.trim().split(/\s+/).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 
-function weekLabel(dateStr) {
+// Get ISO date string for Monday of the week containing dateStr
+function getMondayOf(dateStr) {
   const d = parseISO(dateStr + 'T12:00:00')
   const mon = startOfWeek(d, { weekStartsOn: 1 })
-  const sun = endOfWeek(d,   { weekStartsOn: 1 })
-  return `Week of ${format(mon, 'MMM d')} – ${format(sun, 'MMM d')}`
+  return mon.toISOString().split('T')[0]
 }
 
-function groupByWeek(assignments) {
-  const map = {}
-  assignments.forEach((a) => {
-    const key = weekLabel(a.date)
-    if (!map[key]) map[key] = []
-    map[key].push(a)
-  })
-  return map
+// Return array of 7 ISO date strings Mon→Sun for a week starting at mondayStr
+function weekDays(mondayStr) {
+  const base = parseISO(mondayStr + 'T12:00:00')
+  return Array.from({ length: 7 }, (_, i) =>
+    addDays(base, i).toISOString().split('T')[0]
+  )
 }
 
 const RPE_LABELS = {
@@ -112,20 +118,49 @@ export default function RunnerPage() {
 
   const today = startOfDay(new Date()).toISOString().split('T')[0]
 
-  const upcoming = useMemo(
-    () => assignments.filter((a) => a.date >= today),
-    [assignments, today]
+  // Build date → assignment lookup
+  const assignmentByDate = useMemo(() => {
+    const map = {}
+    assignments.forEach((a) => { if (a.date) map[a.date] = a })
+    return map
+  }, [assignments])
+
+  // Week navigation — start on the Monday of the current week
+  const [currentMonday, setCurrentMonday] = useState(() => getMondayOf(today))
+  const [selectedDate,  setSelectedDate]  = useState(null)
+  const [showPast,      setShowPast]      = useState(false)
+
+  const days = useMemo(() => weekDays(currentMonday), [currentMonday])
+
+  const hasPrev = useMemo(
+    () => assignments.some((a) => a.date < currentMonday),
+    [assignments, currentMonday]
   )
-  const past = useMemo(
-    () => [...assignments.filter((a) => a.date < today)].reverse(),
+  const hasNext = useMemo(
+    () => assignments.some((a) => a.date > days[6]),
+    [assignments, days]
+  )
+
+  function goNextWeek() {
+    const next = addDays(parseISO(currentMonday + 'T12:00:00'), 7).toISOString().split('T')[0]
+    setCurrentMonday(next)
+    setSelectedDate(null)
+  }
+  function goPrevWeek() {
+    const prev = addDays(parseISO(currentMonday + 'T12:00:00'), -7).toISOString().split('T')[0]
+    setCurrentMonday(prev)
+    setSelectedDate(null)
+  }
+
+  const upcomingCount = useMemo(
+    () => assignments.filter((a) => a.date >= today).length,
     [assignments, today]
   )
 
-  const upcomingByWeek = useMemo(() => groupByWeek(upcoming), [upcoming])
-  const pastByWeek     = useMemo(() => groupByWeek(past),     [past])
-
-  const [showPast,    setShowPast]    = useState(false)
-  const [expandedId,  setExpandedId]  = useState(null)
+  const pastAssignments = useMemo(
+    () => [...assignments.filter((a) => a.date < currentMonday)].sort((a, b) => b.date.localeCompare(a.date)),
+    [assignments, currentMonday]
+  )
 
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 flex items-center justify-center">
@@ -142,11 +177,13 @@ export default function RunnerPage() {
     </div>
   )
 
+  const selectedAssignment = selectedDate ? assignmentByDate[selectedDate] : null
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 p-4 py-10">
-      <div className="max-w-xl mx-auto space-y-5">
+      <div className="max-w-xl mx-auto space-y-4">
 
-        {/* Header card */}
+        {/* Header */}
         <div className="bg-white/10 backdrop-blur rounded-3xl px-6 py-5 text-white">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-xl font-bold">
@@ -157,81 +194,138 @@ export default function RunnerPage() {
               <h1 className="text-2xl font-bold">{runnerName || 'Runner Schedule'}</h1>
             </div>
           </div>
-          <div className="mt-4 flex gap-4 text-sm text-white/70">
-            <span>📅 {upcoming.length} upcoming workout{upcoming.length !== 1 ? 's' : ''}</span>
+          <div className="mt-3 flex gap-4 text-sm text-white/70">
+            <span>📅 {upcomingCount} upcoming</span>
             <span>✅ {loggedIds.length} logged</span>
           </div>
         </div>
 
-        {/* Upcoming workouts */}
-        {upcoming.length === 0 ? (
-          <div className="bg-white rounded-3xl p-8 text-center text-gray-400">
-            <span className="text-4xl">🎉</span>
-            <p className="mt-3 font-medium text-gray-600">No upcoming workouts scheduled</p>
-            <p className="text-sm mt-1">Check back later!</p>
-          </div>
-        ) : (
-          Object.entries(upcomingByWeek).map(([week, workouts]) => (
-            <div key={week} className="space-y-2">
-              <p className="text-white/60 text-xs font-semibold uppercase tracking-wider px-1">{week}</p>
-              {workouts.map((a) => (
-                <WorkoutCard
-                  key={a.id}
-                  assignment={a}
-                  peers={peersByDate[a.date] || []}
-                  isLogged={loggedIds.includes(a.id)}
-                  expanded={expandedId === a.id}
-                  onToggle={() => setExpandedId((id) => id === a.id ? null : a.id)}
-                  onLogged={() => { markLogged(a.id); setExpandedId(null) }}
-                />
-              ))}
-            </div>
-          ))
-        )}
+        {/* Weekly horizontal calendar */}
+        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
 
-        {/* Past workouts toggle */}
-        {past.length > 0 && (
+          {/* Week navigation header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <button
+              onClick={goPrevWeek}
+              disabled={!hasPrev}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <p className="text-sm font-semibold text-gray-700">
+              {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d, yyyy')}
+            </p>
+            <button
+              onClick={goNextWeek}
+              disabled={!hasNext}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Day pills row */}
+          <div className="grid grid-cols-7 gap-1 px-3 py-4">
+            {days.map((dateStr) => {
+              const d          = parseISO(dateStr + 'T12:00:00')
+              const hasWorkout = !!assignmentByDate[dateStr]
+              const isSelected = selectedDate === dateStr
+              const isToday    = dateStr === today
+              const isPast     = dateStr < today
+
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => hasWorkout && setSelectedDate((s) => s === dateStr ? null : dateStr)}
+                  disabled={!hasWorkout}
+                  className={`flex flex-col items-center py-2.5 px-1 rounded-2xl transition-colors ${
+                    isSelected
+                      ? 'bg-brand-600 text-white shadow-md'
+                      : hasWorkout && !isPast
+                        ? 'bg-brand-50 text-brand-700 hover:bg-brand-100 cursor-pointer'
+                        : hasWorkout && isPast
+                          ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer'
+                          : 'text-gray-300 cursor-default'
+                  }`}
+                >
+                  <span className="text-xs font-medium mb-1">{format(d, 'EEE')}</span>
+                  <span className={`text-base font-bold leading-none ${isToday && !isSelected ? 'text-brand-600' : ''}`}>
+                    {format(d, 'd')}
+                  </span>
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 ${
+                    hasWorkout
+                      ? isSelected ? 'bg-white/70' : isPast ? 'bg-gray-400' : 'bg-brand-400'
+                      : 'invisible'
+                  }`} />
+                  {isToday && (
+                    <div className={`w-1 h-1 rounded-full mt-0.5 ${isSelected ? 'bg-yellow-300' : 'bg-yellow-400'}`} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Selected day workout */}
+          {selectedAssignment && (
+            <div className="border-t border-gray-100">
+              <WorkoutCard
+                assignment={selectedAssignment}
+                peers={peersByDate[selectedDate] || []}
+                isLogged={loggedIds.includes(selectedAssignment.id)}
+                isPast={selectedDate < today}
+                expanded
+                onToggle={() => {}}
+                onLogged={() => markLogged(selectedAssignment.id)}
+                inline
+              />
+            </div>
+          )}
+
+          {!selectedDate && (
+            <p className="text-center text-gray-400 text-sm py-5 px-4">
+              {Object.keys(assignmentByDate).some((d) => days.includes(d))
+                ? 'Tap a highlighted day to see your workout'
+                : 'No workouts scheduled this week'}
+            </p>
+          )}
+        </div>
+
+        {/* Past workouts */}
+        {pastAssignments.length > 0 && (
           <div>
             <button
               onClick={() => setShowPast((v) => !v)}
               className="w-full flex items-center justify-between bg-white/10 hover:bg-white/20 text-white rounded-2xl px-5 py-3 text-sm font-medium transition-colors"
             >
-              <span>Past workouts ({past.length})</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className={`h-4 w-4 transition-transform ${showPast ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor"
-              >
+              <span>Past workouts ({pastAssignments.length})</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${showPast ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-
             {showPast && (
               <div className="mt-2 space-y-2">
-                {Object.entries(pastByWeek).map(([week, workouts]) => (
-                  <div key={week} className="space-y-2">
-                    <p className="text-white/40 text-xs font-semibold uppercase tracking-wider px-1">{week}</p>
-                    {workouts.map((a) => (
-                      <WorkoutCard
-                        key={a.id}
-                        assignment={a}
-                        isPast
-                        isLogged={loggedIds.includes(a.id)}
-                        expanded={expandedId === a.id}
-                        onToggle={() => setExpandedId((id) => id === a.id ? null : a.id)}
-                        onLogged={() => { markLogged(a.id); setExpandedId(null) }}
-                      />
-                    ))}
-                  </div>
+                {pastAssignments.map((a) => (
+                  <WorkoutCard
+                    key={a.id}
+                    assignment={a}
+                    peers={peersByDate[a.date] || []}
+                    isPast
+                    isLogged={loggedIds.includes(a.id)}
+                    expanded={selectedDate === a.id}
+                    onToggle={() => setSelectedDate((s) => s === a.id ? null : a.id)}
+                    onLogged={() => markLogged(a.id)}
+                  />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        <p className="text-center text-white/30 text-xs pb-4">
-          Team Running Plans · Episcopal Academy
-        </p>
+        <p className="text-center text-white/30 text-xs pb-4">Team Running Plans · Episcopal Academy</p>
       </div>
     </div>
   )
@@ -239,7 +333,7 @@ export default function RunnerPage() {
 
 // ── Workout Card ──────────────────────────────────────────────────────────────
 
-function WorkoutCard({ assignment: a, peers = [], isPast, isLogged, expanded, onToggle, onLogged }) {
+function WorkoutCard({ assignment: a, peers = [], isPast, isLogged, expanded, onToggle, onLogged, inline = false }) {
   const dateStr   = format(parseISO(a.date + 'T12:00:00'), 'EEEE, MMMM d')
   const shortDate = format(parseISO(a.date + 'T12:00:00'), 'EEE M/d')
 
@@ -250,38 +344,43 @@ function WorkoutCard({ assignment: a, peers = [], isPast, isLogged, expanded, on
       : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2.5 py-0.5 rounded-full">Upcoming</span>
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      {/* Card header */}
-      <button
-        onClick={onToggle}
-        className="w-full text-left px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 transition-colors"
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-semibold text-gray-900 text-sm">{shortDate}</span>
-            {statusBadge}
-          </div>
-          {a.mainWorkout ? (
-            <p className="text-sm text-gray-600 line-clamp-2">⚡ {a.mainWorkout}</p>
-          ) : (
-            <p className="text-sm text-gray-400 italic">Rest / recovery day</p>
-          )}
-        </div>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className={`h-4 w-4 text-gray-400 mt-1 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+    <div className={inline ? '' : 'bg-white rounded-2xl shadow-sm overflow-hidden'}>
+      {/* Card header — hidden when inline (already shown by calendar) */}
+      {!inline && (
+        <button
+          onClick={onToggle}
+          className="w-full text-left px-5 py-4 flex items-start justify-between gap-3 hover:bg-gray-50 transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="font-semibold text-gray-900 text-sm">{shortDate}</span>
+              {statusBadge}
+            </div>
+            {a.mainWorkout ? (
+              <p className="text-sm text-gray-600 line-clamp-2">⚡ {a.mainWorkout}</p>
+            ) : (
+              <p className="text-sm text-gray-400 italic">Rest / recovery day</p>
+            )}
+          </div>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className={`h-4 w-4 text-gray-400 mt-1 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
 
       {/* Expanded content */}
-      {expanded && (
-        <div className="border-t border-gray-100">
+      {(expanded || inline) && (
+        <div className={inline ? '' : 'border-t border-gray-100'}>
           {/* Workout details */}
           <div className="px-5 py-4 space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{dateStr}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{dateStr}</p>
+              {statusBadge}
+            </div>
             {a.warmup && (
               <Block emoji="🔥" title="Warm-Up" content={a.warmup} color="bg-green-50 border-green-100" />
             )}
@@ -326,18 +425,72 @@ function WorkoutCard({ assignment: a, peers = [], isPast, isLogged, expanded, on
             </div>
           )}
 
-          {/* Log form */}
+          {/* Log form / log summary */}
           <div className="border-t border-gray-100 px-5 py-4 bg-gray-50">
             {isLogged ? (
-              <div className="text-center py-2">
-                <p className="text-emerald-600 font-semibold text-sm">✅ Activity logged — your coach can see your response!</p>
-              </div>
+              <LogSummary assignmentId={a.id} />
             ) : (
               <LogForm assignmentId={a.id} assignment={a} onLogged={onLogged} />
             )}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Log Summary ───────────────────────────────────────────────────────────────
+
+function LogSummary({ assignmentId }) {
+  const log = getStoredLog(assignmentId)
+
+  if (!log) {
+    return (
+      <p className="text-emerald-600 font-semibold text-sm text-center py-1">
+        ✅ Activity logged — your coach can see your response!
+      </p>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-3">✅ Your Activity Log</p>
+      <div className="space-y-1.5">
+        {log.actualActivity && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500">What you did</p>
+            <p className="text-sm text-gray-800 whitespace-pre-wrap">{log.actualActivity}</p>
+          </div>
+        )}
+        {(log.distance || log.duration || log.rpe) && (
+          <div className="flex gap-4 pt-1">
+            {log.distance && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500">Distance</p>
+                <p className="text-sm text-gray-800">{log.distance}</p>
+              </div>
+            )}
+            {log.duration && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500">Time</p>
+                <p className="text-sm text-gray-800">{log.duration}</p>
+              </div>
+            )}
+            {log.rpe && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500">Effort</p>
+                <p className="text-sm text-gray-800">{log.rpe}/10</p>
+              </div>
+            )}
+          </div>
+        )}
+        {log.notes && (
+          <div className="pt-1">
+            <p className="text-xs font-semibold text-gray-500">Notes</p>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.notes}</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -359,19 +512,25 @@ function LogForm({ assignmentId, assignment, onLogged }) {
     }
     setSaving(true)
     setError(null)
+    const logData = {
+      actualActivity: form.actualActivity.trim(),
+      distance:       form.distance.trim(),
+      duration:       form.duration.trim(),
+      rpe:            form.rpe || null,
+      notes:          form.notes.trim(),
+    }
     try {
       await addDoc(collection(db, 'workoutLogs'), {
         assignmentId,
-        runnerId:       assignment.runnerId   || '',
-        runnerName:     assignment.runnerName || '',
-        date:           assignment.date       || '',
-        actualActivity: form.actualActivity.trim(),
-        distance:       form.distance.trim(),
-        duration:       form.duration.trim(),
-        rpe:            form.rpe ? parseInt(form.rpe, 10) : null,
-        notes:          form.notes.trim(),
-        submittedAt:    serverTimestamp(),
+        runnerId:    assignment.runnerId   || '',
+        runnerName:  assignment.runnerName || '',
+        date:        assignment.date       || '',
+        ...logData,
+        rpe:         logData.rpe ? parseInt(logData.rpe, 10) : null,
+        submittedAt: serverTimestamp(),
       })
+      // Save to localStorage so this device can show the log back to the runner
+      storeLog(assignmentId, logData)
       onLogged()
     } catch {
       setError('Something went wrong. Please try again.')
