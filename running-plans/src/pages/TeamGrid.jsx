@@ -336,23 +336,16 @@ export default function TeamGrid() {
                             style={{ minHeight: '80px', height: '80px' }}
                           >
                             {existing ? (
-                              <div className={`rounded-lg border p-1.5 h-full flex flex-col gap-1 ${color.light} ${color.border}`}>
-                                {existing.mainWorkout && (
-                                  <p className={`text-xs font-semibold leading-snug line-clamp-2 ${color.text}`}>
+                              <div className={`border-l-2 ${color.border} pl-2 pr-1 py-1 h-full flex flex-col gap-1 bg-white`}>
+                                {existing.mainWorkout ? (
+                                  <p className={`text-xs font-semibold leading-snug line-clamp-3 ${color.text}`}>
                                     {existing.mainWorkout.split('\n')[0]}
                                   </p>
-                                )}
-                                {existing.warmup && (
-                                  <p className="text-xs text-gray-500 line-clamp-1">🔥 {existing.warmup}</p>
-                                )}
-                                {existing.cooldown && (
-                                  <p className="text-xs text-gray-500 line-clamp-1">❄️ {existing.cooldown}</p>
-                                )}
-                                {!existing.mainWorkout && !existing.warmup && !existing.cooldown && (
-                                  <p className="text-xs text-gray-400 italic">Rest / recovery</p>
+                                ) : (
+                                  <p className="text-xs text-gray-400 italic">Rest</p>
                                 )}
                                 <div className="mt-auto">
-                                  <span className={`text-xs font-bold ${color.text} opacity-60`}>✏️ edit</span>
+                                  <span className="text-xs text-gray-300">✏️</span>
                                 </div>
                               </div>
                             ) : (
