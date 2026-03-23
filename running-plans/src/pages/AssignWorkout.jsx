@@ -5,6 +5,7 @@ import { useCollection } from '../hooks/useCollection'
 import Toast from '../components/Toast'
 import { WORKOUT_TYPES, getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
 import { format } from 'date-fns'
+import CrossTrainingInput, { EMPTY_CT } from '../components/CrossTrainingInput'
 
 const EMPTY_CUSTOM = {
   title: '', type: 'easy', description: '',
@@ -52,8 +53,9 @@ export default function AssignWorkout() {
   const [selectedGroup,    setSelectedGroup]    = useState('')
   const [selectedRunners,  setSelectedRunners]  = useState([])
 
-  // Step 4: notes
-  const [notes,   setNotes]   = useState('')
+  // Step 4: notes + cross training
+  const [notes,          setNotes]          = useState('')
+  const [crossTraining,  setCrossTraining]  = useState(EMPTY_CT)
 
   const [saving,  setSaving]  = useState(false)
   const [toast,   setToast]   = useState(null)
@@ -115,18 +117,18 @@ export default function AssignWorkout() {
       }
 
       // Build the workout fields in the format CalendarPage / RunnerPage expect
-      const wktFields = buildAssignmentFields(workoutDoc, notes)
+      const wktFields = { ...buildAssignmentFields(workoutDoc, notes), crossTraining }
 
       // Create ONE assignment document per runner
       const promises = recipients.map((runner) =>
         addDoc(collection(db, 'assignments'), {
-          runnerId:     runner.id,
-          runnerName:   runner.name,
+          runnerId:        runner.id,
+          runnerName:      runner.name,
           date,
           dateStr,
           ...wktFields,
-          visibilityGroup: '',
-          workoutId:    workoutDoc.id,
+          visibilityGroup: runner.visibilityGroup ?? null,
+          workoutId:       workoutDoc.id,
           workoutTitle: workoutDoc.title,
           workoutType:  workoutDoc.type,
           workoutData:  workoutDoc,
@@ -147,6 +149,7 @@ export default function AssignWorkout() {
       setSaveToLibrary(false)
       setDate('')
       setNotes('')
+      setCrossTraining(EMPTY_CT)
       setSelectedRunners([])
       setSelectedGroup('')
 
@@ -389,18 +392,26 @@ export default function AssignWorkout() {
           )}
         </Section>
 
-        {/* Step 4: Notes */}
-        <Section step="4" title="Assignment Notes">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Notes <span className="text-gray-400 font-normal">(optional — appended to workout notes)</span>
-          </label>
-          <textarea
-            rows={3}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any specific notes for this workout on this date…"
-          />
+        {/* Step 4: Notes + Cross Training */}
+        <Section step="4" title="Notes &amp; Cross Training">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Assignment Notes <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <textarea
+                rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any specific notes for this workout on this date…"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">💪 Cross Training</label>
+              <CrossTrainingInput value={crossTraining} onChange={setCrossTraining} />
+            </div>
+          </div>
         </Section>
 
         {/* Summary */}
