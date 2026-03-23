@@ -15,6 +15,8 @@ import RunnerLogs from './pages/RunnerLogs'
 import DataExport from './pages/DataExport'
 import Meets from './pages/Meets'
 import TeamGrid from './pages/TeamGrid'
+import SwimWorkouts from './pages/SwimWorkouts'
+import StrengthWorkouts from './pages/StrengthWorkouts'
 
 export default function App() {
   return (
@@ -42,6 +44,8 @@ export default function App() {
             <Route path="export" element={<DataExport />} />
             <Route path="meets" element={<Meets />} />
             <Route path="team-grid" element={<TeamGrid />} />
+            <Route path="swim-workouts" element={<SwimWorkouts />} />
+            <Route path="strength-workouts" element={<StrengthWorkouts />} />
           </Route>
         </Routes>
       </AuthProvider>
