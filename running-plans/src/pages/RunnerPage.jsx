@@ -70,6 +70,15 @@ ALL_MEETS.forEach((m) => {
   MEETS_BY_DATE[m.date].push(m)
 })
 
+// ── Tabs config ───────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'schedule',  label: 'My Schedule', emoji: '📅' },
+  { id: 'meets',     label: 'Meets',       emoji: '🏟️' },
+  { id: 'swim',      label: 'Swim',        emoji: '🏊' },
+  { id: 'strength',  label: 'Strength',    emoji: '💪' },
+]
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RunnerPage() {
@@ -78,6 +87,7 @@ export default function RunnerPage() {
   const [peersByDate,  setPeersByDate]  = useState({})
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
+  const [activeTab,    setActiveTab]    = useState('schedule')
   const runnerName = assignments[0]?.runnerName || ''
 
   const LS_KEY = `logged_${runnerId}`
@@ -178,7 +188,7 @@ export default function RunnerPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 px-4 pt-6 pb-10">
 
       {/* School Header */}
       <div className="max-w-7xl mx-auto mb-4">
@@ -200,7 +210,7 @@ export default function RunnerPage() {
       </div>
 
       {/* Runner Header */}
-      <div className="max-w-7xl mx-auto mb-6">
+      <div className="max-w-7xl mx-auto mb-4">
         <div className="bg-white/10 backdrop-blur rounded-3xl px-6 py-5 text-white flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
@@ -218,179 +228,210 @@ export default function RunnerPage() {
         </div>
       </div>
 
-      {/* 4-week workout grids */}
-      {weeks.map(({ monday, days, label }) => (
-        <div key={monday} className="max-w-7xl mx-auto mb-5">
-          {/* Week label */}
-          <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-2 px-1">
-            {label} · {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d')}
-          </p>
-          <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <div className="grid grid-cols-7 min-w-[700px]">
-
-                {/* Date headers */}
-                {days.map((dateStr) => {
-                  const d       = parseISO(dateStr + 'T12:00:00')
-                  const isToday = dateStr === today
-                  const isPastDay = dateStr < today
-                  const hasWkt  = !!assignmentByDate[dateStr]
-                  const hasMeet = !!MEETS_BY_DATE[dateStr]
-                  return (
-                    <div key={dateStr} className={`text-center py-3 px-2 border-b border-r border-gray-100 last:border-r-0 ${
-                      isToday        ? 'bg-brand-600 text-white'
-                      : hasWkt && !isPastDay ? 'bg-brand-50 text-brand-700'
-                      : isPastDay    ? 'bg-gray-50 text-gray-400'
-                      : 'bg-gray-50 text-gray-300'
-                    }`}>
-                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{format(d, 'EEE')}</p>
-                      <p className="text-2xl font-bold leading-none mt-0.5">{format(d, 'd')}</p>
-                      <p className="text-xs opacity-70 mt-0.5">{format(d, 'MMM')}</p>
-                      {hasMeet && <div className="mt-1 w-2 h-2 rounded-full bg-red-400 mx-auto" />}
-                    </div>
-                  )
-                })}
-
-                {/* Workout + meet content */}
-                {days.map((dateStr) => {
-                  const a        = assignmentByDate[dateStr]
-                  const isPastDay = dateStr < today
-                  const isToday  = dateStr === today
-                  const isLogged = a ? loggedIds.includes(a.id) : false
-                  const logOpen  = logOpenDate === dateStr
-                  const dayMeets = MEETS_BY_DATE[dateStr] || []
-
-                  return (
-                    <div key={dateStr} className={`border-r border-gray-100 last:border-r-0 flex flex-col ${isToday ? 'bg-brand-50/40' : 'bg-white'}`}>
-                      <div className="flex-1 flex flex-col p-3 gap-2">
-
-                        {/* Meet badges */}
-                        {dayMeets.map((meet) => (
-                          <div key={meet.id} className={`rounded-lg border p-2 ${meet.championship ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                            <p className={`text-xs font-bold mb-0.5 ${meet.championship ? 'text-amber-700' : 'text-red-700'}`}>
-                              {meet.championship ? '🏆' : '🏟️'} {meet.level === 'MS' ? 'MS — ' : ''}{meet.name}
-                            </p>
-                            <p className="text-xs text-gray-600">📍 {meet.location}</p>
-                            <p className="text-xs text-gray-500">{meet.home ? '🏠 Home' : '✈️ Away'}</p>
-                          </div>
-                        ))}
-
-                        {a ? (
-                          <>
-                            <div className="flex justify-center">
-                              {isLogged
-                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
-                                : isPastDay
-                                  ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
-                                  : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2 py-0.5 rounded-full">Upcoming</span>
-                              }
-                            </div>
-                            {a.warmup        && <DayBlock emoji="🔥" label="Warm-Up"   content={a.warmup}        bg="bg-green-50"  border="border-green-200"  text="text-green-800" />}
-                            {a.mainWorkout   && <DayBlock emoji="⚡" label="Main"      content={a.mainWorkout}   bg="bg-indigo-50" border="border-indigo-200" text="text-indigo-800" />}
-                            {a.cooldown      && <DayBlock emoji="❄️" label="Cool-Down" content={a.cooldown}      bg="bg-blue-50"   border="border-blue-200"   text="text-blue-800" />}
-                            {ctToText(a.crossTraining) && <DayBlock emoji="💪" label="Cross" content={ctToText(a.crossTraining)} bg="bg-teal-50" border="border-teal-200" text="text-teal-800" />}
-                            {a.notes         && <DayBlock emoji="📝" label="Notes"     content={a.notes}         bg="bg-amber-50"  border="border-amber-200"  text="text-amber-800" />}
-                            {!a.warmup && !a.mainWorkout && !a.cooldown && !a.crossTraining && !a.notes && (
-                              <p className="text-xs text-gray-400 text-center py-2 italic">Rest / recovery</p>
-                            )}
-
-                            {(peersByDate[dateStr] || []).length > 0 && (
-                              <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-2">
-                                <p className="text-xs font-bold text-indigo-500 mb-1">👯 Partners</p>
-                                {peersByDate[dateStr].map((p) => (
-                                  <div key={p.id} className="text-xs text-indigo-700 font-medium truncate">
-                                    {p.runnerName}
-                                    {p.mainWorkout && <span className="text-indigo-400 font-normal"> — {p.mainWorkout.slice(0, 40)}</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="mt-auto pt-2">
-                              {isLogged ? (
-                                <LogSummary assignmentId={a.id} />
-                              ) : (
-                                <>
-                                  {!logOpen && (
-                                    <button onClick={() => setLogOpenDate(dateStr)}
-                                      className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
-                                      📋 Log Activity
-                                    </button>
-                                  )}
-                                  {logOpen && (
-                                    <LogForm assignmentId={a.id} assignment={a}
-                                      onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
-                                      onCancel={() => setLogOpenDate(null)} compact />
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          !dayMeets.length && (
-                            <div className="flex-1 flex items-center justify-center py-6">
-                              <p className="text-xs text-gray-300 italic">Rest</p>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {/* Full season meet schedule */}
+      {/* Tab Bar */}
       <div className="max-w-7xl mx-auto mb-6">
-        <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
-          <p className="text-white font-black text-lg mb-4">🏟️ Season Meet Schedule</p>
-
-          {/* Upcoming meets */}
-          {upcomingMeets.length > 0 && (
-            <div className="mb-4">
-              <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">Upcoming</p>
-              <div className="space-y-2">
-                {upcomingMeets.map((meet) => (
-                  <MeetRow key={meet.id} meet={meet} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Past meets */}
-          {pastMeets.length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowPastMeets((v) => !v)}
-                className="w-full flex items-center justify-between text-white/50 hover:text-white/70 text-xs font-bold uppercase tracking-widest mb-2 transition-colors"
-              >
-                <span>Completed ({pastMeets.length})</span>
-                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showPastMeets && (
-                <div className="space-y-2 opacity-50">
-                  {pastMeets.map((meet) => (
-                    <MeetRow key={meet.id} meet={meet} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+        <div className="bg-white/10 backdrop-blur rounded-2xl p-1.5 flex gap-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+                activeTab === tab.id
+                  ? 'bg-white text-brand-800 shadow-sm'
+                  : 'text-white/70 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <span>{tab.emoji}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Swim Workouts */}
-      <SwimSection />
+      {/* ── Tab: My Schedule ── */}
+      {activeTab === 'schedule' && (
+        <>
+          {weeks.map(({ monday, days, label }) => (
+            <div key={monday} className="max-w-7xl mx-auto mb-5">
+              <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-2 px-1">
+                {label} · {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d')}
+              </p>
+              <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <div className="grid grid-cols-7 min-w-[700px]">
 
-      {/* Strength Workouts */}
-      <StrengthSection />
+                    {/* Date headers */}
+                    {days.map((dateStr) => {
+                      const d       = parseISO(dateStr + 'T12:00:00')
+                      const isToday = dateStr === today
+                      const isPastDay = dateStr < today
+                      const hasWkt  = !!assignmentByDate[dateStr]
+                      const hasMeet = !!MEETS_BY_DATE[dateStr]
+                      return (
+                        <div key={dateStr} className={`text-center py-3 px-2 border-b border-r border-gray-100 last:border-r-0 ${
+                          isToday        ? 'bg-brand-600 text-white'
+                          : hasWkt && !isPastDay ? 'bg-brand-50 text-brand-700'
+                          : isPastDay    ? 'bg-gray-50 text-gray-400'
+                          : 'bg-gray-50 text-gray-300'
+                        }`}>
+                          <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{format(d, 'EEE')}</p>
+                          <p className="text-2xl font-bold leading-none mt-0.5">{format(d, 'd')}</p>
+                          <p className="text-xs opacity-70 mt-0.5">{format(d, 'MMM')}</p>
+                          {hasMeet && <div className="mt-1 w-2 h-2 rounded-full bg-red-400 mx-auto" />}
+                        </div>
+                      )
+                    })}
 
-      <p className="text-center text-white/30 text-xs pb-4 max-w-7xl mx-auto">
+                    {/* Workout + meet content */}
+                    {days.map((dateStr) => {
+                      const a        = assignmentByDate[dateStr]
+                      const isPastDay = dateStr < today
+                      const isToday  = dateStr === today
+                      const isLogged = a ? loggedIds.includes(a.id) : false
+                      const logOpen  = logOpenDate === dateStr
+                      const dayMeets = MEETS_BY_DATE[dateStr] || []
+
+                      return (
+                        <div key={dateStr} className={`border-r border-gray-100 last:border-r-0 flex flex-col ${isToday ? 'bg-brand-50/40' : 'bg-white'}`}>
+                          <div className="flex-1 flex flex-col p-3 gap-2">
+
+                            {/* Meet badges */}
+                            {dayMeets.map((meet) => (
+                              <div key={meet.id} className={`rounded-lg border p-2 ${meet.championship ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                                <p className={`text-xs font-bold mb-0.5 ${meet.championship ? 'text-amber-700' : 'text-red-700'}`}>
+                                  {meet.championship ? '🏆' : '🏟️'} {meet.level === 'MS' ? 'MS — ' : ''}{meet.name}
+                                </p>
+                                <p className="text-xs text-gray-600">📍 {meet.location}</p>
+                                <p className="text-xs text-gray-500">{meet.home ? '🏠 Home' : '✈️ Away'}</p>
+                              </div>
+                            ))}
+
+                            {a ? (
+                              <>
+                                <div className="flex justify-center">
+                                  {isLogged
+                                    ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
+                                    : isPastDay
+                                      ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
+                                      : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2 py-0.5 rounded-full">Upcoming</span>
+                                  }
+                                </div>
+                                {a.warmup        && <DayBlock emoji="🔥" label="Warm-Up"   content={a.warmup}        bg="bg-green-50"  border="border-green-200"  text="text-green-800" />}
+                                {a.mainWorkout   && <DayBlock emoji="⚡" label="Main"      content={a.mainWorkout}   bg="bg-indigo-50" border="border-indigo-200" text="text-indigo-800" />}
+                                {a.cooldown      && <DayBlock emoji="❄️" label="Cool-Down" content={a.cooldown}      bg="bg-blue-50"   border="border-blue-200"   text="text-blue-800" />}
+                                {ctToText(a.crossTraining) && <DayBlock emoji="💪" label="Cross" content={ctToText(a.crossTraining)} bg="bg-teal-50" border="border-teal-200" text="text-teal-800" />}
+                                {a.notes         && <DayBlock emoji="📝" label="Notes"     content={a.notes}         bg="bg-amber-50"  border="border-amber-200"  text="text-amber-800" />}
+                                {!a.warmup && !a.mainWorkout && !a.cooldown && !a.crossTraining && !a.notes && (
+                                  <p className="text-xs text-gray-400 text-center py-2 italic">Rest / recovery</p>
+                                )}
+
+                                {(peersByDate[dateStr] || []).length > 0 && (
+                                  <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-2">
+                                    <p className="text-xs font-bold text-indigo-500 mb-1">👯 Partners</p>
+                                    {peersByDate[dateStr].map((p) => (
+                                      <div key={p.id} className="text-xs text-indigo-700 font-medium truncate">
+                                        {p.runnerName}
+                                        {p.mainWorkout && <span className="text-indigo-400 font-normal"> — {p.mainWorkout.slice(0, 40)}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className="mt-auto pt-2">
+                                  {isLogged ? (
+                                    <LogSummary assignmentId={a.id} />
+                                  ) : (
+                                    <>
+                                      {!logOpen && (
+                                        <button onClick={() => setLogOpenDate(dateStr)}
+                                          className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
+                                          📋 Log Activity
+                                        </button>
+                                      )}
+                                      {logOpen && (
+                                        <LogForm assignmentId={a.id} assignment={a}
+                                          onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
+                                          onCancel={() => setLogOpenDate(null)} compact />
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              !dayMeets.length && (
+                                <div className="flex-1 flex items-center justify-center py-6">
+                                  <p className="text-xs text-gray-300 italic">Rest</p>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ── Tab: Meets ── */}
+      {activeTab === 'meets' && (
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
+            <p className="text-white font-black text-lg mb-4">🏟️ Season Meet Schedule</p>
+
+            {upcomingMeets.length > 0 && (
+              <div className="mb-4">
+                <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">Upcoming</p>
+                <div className="space-y-2">
+                  {upcomingMeets.map((meet) => (
+                    <MeetRow key={meet.id} meet={meet} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {pastMeets.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowPastMeets((v) => !v)}
+                  className="w-full flex items-center justify-between text-white/50 hover:text-white/70 text-xs font-bold uppercase tracking-widest mb-2 transition-colors"
+                >
+                  <span>Completed ({pastMeets.length})</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showPastMeets && (
+                  <div className="space-y-2 opacity-50">
+                    {pastMeets.map((meet) => (
+                      <MeetRow key={meet.id} meet={meet} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab: Swim ── */}
+      {activeTab === 'swim' && (
+        <div className="max-w-7xl mx-auto">
+          <SwimSection />
+        </div>
+      )}
+
+      {/* ── Tab: Strength ── */}
+      {activeTab === 'strength' && (
+        <div className="max-w-7xl mx-auto">
+          <StrengthSection />
+        </div>
+      )}
+
+      <p className="text-center text-white/30 text-xs pt-8 max-w-7xl mx-auto">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
     </div>
@@ -537,129 +578,96 @@ function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false
   )
 }
 
-// ── Block ─────────────────────────────────────────────────────────────────────
-
-function Block({ emoji, title, content, color = 'bg-gray-50 border-gray-100' }) {
-  return (
-    <div className={`rounded-xl border p-3 ${color}`}>
-      <p className="text-xs font-bold text-gray-600 mb-1">{emoji} {title}</p>
-      <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{content}</p>
-    </div>
-  )
-}
-
 // ── Swim Workouts Section ─────────────────────────────────────────────────────
 
 function SwimSection() {
   const [selectedId, setSelectedId] = useState(null)
-  const [open, setOpen] = useState(false)
   const workout = selectedId ? SWIM_WORKOUTS.find((w) => w.id === selectedId) : null
 
   return (
-    <div className="max-w-7xl mx-auto mb-6">
-      <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
+    <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-2xl">🏊</span>
+        <div>
+          <p className="text-white font-black text-lg leading-tight">Swim Workouts</p>
+          <p className="text-white/50 text-xs">5 cross-training sessions from Coach</p>
+        </div>
+      </div>
 
-        {/* Header / toggle */}
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="w-full flex items-center justify-between text-white"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🏊</span>
-            <div className="text-left">
-              <p className="font-black text-lg leading-tight">Swim Workouts</p>
-              <p className="text-white/50 text-xs">5 cross-training sessions from Coach</p>
+      {/* Dropdown */}
+      <select
+        value={selectedId || ''}
+        onChange={(e) => setSelectedId(e.target.value || null)}
+        className="w-full bg-white/10 text-white border border-white/20 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40 mb-3"
+      >
+        <option value="">— choose a workout —</option>
+        {SWIM_WORKOUTS.map((w) => (
+          <option key={w.id} value={w.id} className="text-gray-900 bg-white">
+            {w.title} · {w.subtitle}
+          </option>
+        ))}
+      </select>
+
+      {/* Quick chips */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {SWIM_WORKOUTS.map((w) => (
+          <button
+            key={w.id}
+            onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
+              selectedId === w.id
+                ? 'bg-white text-brand-700 border-white'
+                : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+            }`}
+          >
+            #{w.id.replace('swim', '')} · {w.type}
+          </button>
+        ))}
+      </div>
+
+      {/* Workout detail */}
+      {workout && (
+        <div className="bg-white rounded-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-cyan-600 to-blue-700 px-5 py-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-white font-black text-base leading-tight">{workout.title}</p>
+              <p className="text-white/70 text-xs mt-0.5">{workout.subtitle}</p>
+            </div>
+            <div className="bg-white/20 rounded-xl px-3 py-2 text-center flex-shrink-0">
+              <p className="text-white font-black text-lg leading-none">
+                {workout.sets.reduce((s, x) => s + (x.yards || 0), 0).toLocaleString()}
+              </p>
+              <p className="text-white/70 text-xs">yards</p>
             </div>
           </div>
-          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-white/60 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {open && (
-          <div className="mt-4 space-y-4">
-            {/* Dropdown */}
-            <select
-              value={selectedId || ''}
-              onChange={(e) => setSelectedId(e.target.value || null)}
-              className="w-full bg-white/10 text-white border border-white/20 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40"
-            >
-              <option value="">— choose a workout —</option>
-              {SWIM_WORKOUTS.map((w) => (
-                <option key={w.id} value={w.id} className="text-gray-900 bg-white">
-                  {w.title} · {w.subtitle}
-                </option>
-              ))}
-            </select>
-
-            {/* Quick chips */}
-            <div className="flex flex-wrap gap-2">
-              {SWIM_WORKOUTS.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                    selectedId === w.id
-                      ? 'bg-white text-brand-700 border-white'
-                      : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
-                  }`}
-                >
-                  #{w.id.replace('swim', '')} · {w.type}
-                </button>
-              ))}
+          {workout.note && (
+            <div className="bg-amber-50 border-b border-amber-100 px-5 py-3">
+              <p className="text-xs font-bold text-amber-700 mb-1">📋 Note</p>
+              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
             </div>
-
-            {/* Workout detail */}
-            {workout && (
-              <div className="bg-white rounded-2xl overflow-hidden">
-                {/* Workout header */}
-                <div className="bg-gradient-to-r from-cyan-600 to-blue-700 px-5 py-4 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-white font-black text-base leading-tight">{workout.title}</p>
-                    <p className="text-white/70 text-xs mt-0.5">{workout.subtitle}</p>
-                  </div>
-                  <div className="bg-white/20 rounded-xl px-3 py-2 text-center flex-shrink-0">
-                    <p className="text-white font-black text-lg leading-none">
-                      {workout.sets.reduce((s, x) => s + (x.yards || 0), 0).toLocaleString()}
-                    </p>
-                    <p className="text-white/70 text-xs">yards</p>
-                  </div>
+          )}
+          <div className="divide-y divide-gray-100">
+            {workout.sets.map((set, i) => (
+              <div key={i} className="px-5 py-3 flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-blue-600">{i + 1}</span>
                 </div>
-
-                {/* Coach note */}
-                {workout.note && (
-                  <div className="bg-amber-50 border-b border-amber-100 px-5 py-3">
-                    <p className="text-xs font-bold text-amber-700 mb-1">📋 Note</p>
-                    <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{set.label}</p>
+                  <p className="text-sm text-gray-800 leading-relaxed">{set.detail}</p>
+                  {set.rest && <p className="text-xs text-gray-400 italic mt-0.5">⏱ {set.rest}</p>}
+                </div>
+                {set.yards > 0 && (
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold text-blue-600">{set.yards}</p>
+                    <p className="text-xs text-gray-400">yds</p>
                   </div>
                 )}
-
-                {/* Sets */}
-                <div className="divide-y divide-gray-100">
-                  {workout.sets.map((set, i) => (
-                    <div key={i} className="px-5 py-3 flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="text-xs font-bold text-blue-600">{i + 1}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{set.label}</p>
-                        <p className="text-sm text-gray-800 leading-relaxed">{set.detail}</p>
-                        {set.rest && <p className="text-xs text-gray-400 italic mt-0.5">⏱ {set.rest}</p>}
-                      </div>
-                      {set.yards > 0 && (
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-bold text-blue-600">{set.yards}</p>
-                          <p className="text-xs text-gray-400">yds</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
               </div>
-            )}
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -668,125 +676,103 @@ function SwimSection() {
 
 function StrengthSection() {
   const [selectedId, setSelectedId] = useState(null)
-  const [open, setOpen] = useState(false)
   const workout = selectedId ? STRENGTH_WORKOUTS.find((w) => w.id === selectedId) : null
 
   return (
-    <div className="max-w-7xl mx-auto mb-6">
-      <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
+    <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-2xl">💪</span>
+        <div>
+          <p className="text-white font-black text-lg leading-tight">Strength Workouts</p>
+          <p className="text-white/50 text-xs">Harvard Track program — 4 workouts with video guides</p>
+        </div>
+      </div>
 
-        {/* Header / toggle */}
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="w-full flex items-center justify-between text-white"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">💪</span>
-            <div className="text-left">
-              <p className="font-black text-lg leading-tight">Strength Workouts</p>
-              <p className="text-white/50 text-xs">Harvard Track program — 4 workouts with video guides</p>
+      {/* Dropdown */}
+      <select
+        value={selectedId || ''}
+        onChange={(e) => setSelectedId(e.target.value || null)}
+        className="w-full bg-white/10 text-white border border-white/20 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40 mb-3"
+      >
+        <option value="">— choose a workout —</option>
+        {STRENGTH_WORKOUTS.map((w) => (
+          <option key={w.id} value={w.id} className="text-gray-900 bg-white">
+            {w.title} · {w.type}
+          </option>
+        ))}
+      </select>
+
+      {/* Quick chips */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {STRENGTH_WORKOUTS.map((w) => (
+          <button
+            key={w.id}
+            onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
+              selectedId === w.id
+                ? 'bg-white text-brand-700 border-white'
+                : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
+            }`}
+          >
+            #{w.id.replace('str', '')} · {w.type}
+          </button>
+        ))}
+      </div>
+
+      {/* Workout detail */}
+      {workout && (
+        <div className="bg-white rounded-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-orange-600 to-red-700 px-5 py-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-white font-black text-base leading-tight">{workout.title}</p>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${workout.typeBadge}`}>
+                {workout.type}
+              </span>
+            </div>
+            <div className="bg-white/20 rounded-xl px-3 py-2 text-center flex-shrink-0">
+              <p className="text-white font-black text-lg leading-none">{workout.exercises.length}</p>
+              <p className="text-white/70 text-xs">exercises</p>
             </div>
           </div>
-          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-white/60 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {open && (
-          <div className="mt-4 space-y-4">
-            {/* Dropdown */}
-            <select
-              value={selectedId || ''}
-              onChange={(e) => setSelectedId(e.target.value || null)}
-              className="w-full bg-white/10 text-white border border-white/20 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40"
-            >
-              <option value="">— choose a workout —</option>
-              {STRENGTH_WORKOUTS.map((w) => (
-                <option key={w.id} value={w.id} className="text-gray-900 bg-white">
-                  {w.title} · {w.type}
-                </option>
-              ))}
-            </select>
-
-            {/* Quick chips */}
-            <div className="flex flex-wrap gap-2">
-              {STRENGTH_WORKOUTS.map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-                    selectedId === w.id
-                      ? 'bg-white text-brand-700 border-white'
-                      : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
-                  }`}
-                >
-                  #{w.id.replace('str', '')} · {w.type}
-                </button>
-              ))}
+          {workout.note && (
+            <div className="bg-amber-50 border-b border-amber-100 px-5 py-3">
+              <p className="text-xs font-bold text-amber-700 mb-1">📋 Note</p>
+              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
             </div>
-
-            {/* Workout detail */}
-            {workout && (
-              <div className="bg-white rounded-2xl overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-orange-600 to-red-700 px-5 py-4 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-white font-black text-base leading-tight">{workout.title}</p>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${workout.typeBadge}`}>
-                      {workout.type}
-                    </span>
-                  </div>
-                  <div className="bg-white/20 rounded-xl px-3 py-2 text-center flex-shrink-0">
-                    <p className="text-white font-black text-lg leading-none">{workout.exercises.length}</p>
-                    <p className="text-white/70 text-xs">exercises</p>
-                  </div>
+          )}
+          <div className="divide-y divide-gray-100">
+            {workout.exercises.map((ex, i) => (
+              <div key={i} className="px-5 py-3 flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-orange-600">{i + 1}</span>
                 </div>
-
-                {/* Note */}
-                {workout.note && (
-                  <div className="bg-amber-50 border-b border-amber-100 px-5 py-3">
-                    <p className="text-xs font-bold text-amber-700 mb-1">📋 Note</p>
-                    <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
-                  </div>
-                )}
-
-                {/* Exercise list */}
-                <div className="divide-y divide-gray-100">
-                  {workout.exercises.map((ex, i) => (
-                    <div key={i} className="px-5 py-3 flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="text-xs font-bold text-orange-600">{i + 1}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{ex.name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{ex.reps}</p>
-                        {ex.videos.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {ex.videos.map((v, vi) => (
-                              <a
-                                key={vi}
-                                href={v.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors"
-                              >
-                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                                  <path d="M21.593 7.203a2.506 2.506 0 00-1.762-1.766C18.265 5.007 12 5 12 5s-6.264-.007-7.831.404a2.56 2.56 0 00-1.766 1.778c-.413 1.566-.417 4.814-.417 4.814s-.004 3.264.406 4.814c.23.857.905 1.534 1.763 1.765 1.582.43 7.83.437 7.83.437s6.265.007 7.831-.403a2.515 2.515 0 001.767-1.763c.414-1.565.417-4.812.417-4.812s.02-3.265-.407-4.831zM9.996 15.005l.005-6 5.207 3.005-5.212 2.995z"/>
-                                </svg>
-                                {v.label}
-                              </a>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">{ex.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{ex.reps}</p>
+                  {ex.videos.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {ex.videos.map((v, vi) => (
+                        <a
+                          key={vi}
+                          href={v.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors"
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M21.593 7.203a2.506 2.506 0 00-1.762-1.766C18.265 5.007 12 5 12 5s-6.264-.007-7.831.404a2.56 2.56 0 00-1.766 1.778c-.413 1.566-.417 4.814-.417 4.814s-.004 3.264.406 4.814c.23.857.905 1.534 1.763 1.765 1.582.43 7.83.437 7.83.437s6.265.007 7.831-.403a2.515 2.515 0 001.767-1.763c.414-1.565.417-4.812.417-4.812s.02-3.265-.407-4.831zM9.996 15.005l.005-6 5.207 3.005-5.212 2.995z"/>
+                          </svg>
+                          {v.label}
+                        </a>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
-            )}
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
