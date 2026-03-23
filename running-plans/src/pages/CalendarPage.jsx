@@ -11,6 +11,7 @@ import { useCollection } from '../hooks/useCollection'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 import { format } from 'date-fns'
+import CrossTrainingInput, { EMPTY_CT, ctToText, normaliseCT } from '../components/CrossTrainingInput'
 
 // Turn "Ava Thompson" → "AT"
 function getInitials(name = '') {
@@ -57,7 +58,7 @@ const PALETTE = [
 
 const EMPTY_FORM = {
   runnerId: '', date: '',
-  warmup: '', mainWorkout: '', cooldown: '', crossTraining: '', notes: '',
+  warmup: '', mainWorkout: '', cooldown: '', crossTraining: EMPTY_CT, notes: '',
   visibilityGroup: '',
 }
 
@@ -178,7 +179,7 @@ export default function CalendarPage() {
       warmup:          a.warmup          || '',
       mainWorkout:     a.mainWorkout     || '',
       cooldown:        a.cooldown        || '',
-      crossTraining:   a.crossTraining   || '',
+      crossTraining:   normaliseCT(a.crossTraining),
       notes:           a.notes           || '',
       visibilityGroup: a.visibilityGroup ? String(a.visibilityGroup) : '',
     })
@@ -223,13 +224,9 @@ export default function CalendarPage() {
       warmup:          form.warmup.trim(),
       mainWorkout:     form.mainWorkout.trim(),
       cooldown:        form.cooldown.trim(),
-      crossTraining:   form.crossTraining.trim(),
+      crossTraining:   form.crossTraining,
       notes:           form.notes.trim(),
-      // Keep for share-link / public page compatibility
       workoutTitle:    form.mainWorkout.trim().slice(0, 60) || 'Workout',
-      runnerIds:       [form.runnerId],
-      runnerNames:     [runner?.name || ''],
-      // Visibility group — determines which peers can see this workout
       visibilityGroup: form.visibilityGroup ? parseInt(form.visibilityGroup, 10) : null,
     }
 
@@ -314,7 +311,7 @@ export default function CalendarPage() {
         if (a.warmup)        parts.push(`<div><b style="color:#166534">WU:</b> ${a.warmup}</div>`)
         if (a.mainWorkout)   parts.push(`<div><b style="color:#3730a3">Main:</b> ${a.mainWorkout}</div>`)
         if (a.cooldown)      parts.push(`<div><b style="color:#1e40af">CD:</b> ${a.cooldown}</div>`)
-        if (a.crossTraining) parts.push(`<div><b style="color:#115e59">XT:</b> ${a.crossTraining}</div>`)
+        if (a.crossTraining) { const xtText = ctToText(a.crossTraining); if (xtText) parts.push(`<div><b style="color:#115e59">XT:</b> ${xtText}</div>`) }
         if (a.notes)         parts.push(`<div style="color:#92400e;font-style:italic">${a.notes}</div>`)
         return `<td style="vertical-align:top">${parts.join('')}</td>`
       }).join('')
@@ -459,8 +456,8 @@ export default function CalendarPage() {
                   {a.cooldown && (
                     <p className="text-xs text-gray-400 line-clamp-1">❄️ {a.cooldown}</p>
                   )}
-                  {a.crossTraining && (
-                    <p className="text-xs text-gray-400 line-clamp-1">💪 {a.crossTraining}</p>
+                  {ctToText(a.crossTraining) && (
+                    <p className="text-xs text-gray-400 line-clamp-1">💪 {ctToText(a.crossTraining)}</p>
                   )}
                 </div>
               </div>
@@ -590,11 +587,11 @@ export default function CalendarPage() {
 
             {/* Cross Training */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">💪 Cross Training</label>
-              <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                placeholder="e.g. Core circuit, hip strength"
-                value={form.crossTraining} onChange={(e) => set('crossTraining', e.target.value)} />
+              <label className="block text-sm font-semibold text-gray-700 mb-2">💪 Cross Training</label>
+              <CrossTrainingInput
+                value={form.crossTraining}
+                onChange={(v) => set('crossTraining', v)}
+              />
             </div>
 
             {/* Notes */}
@@ -825,6 +822,7 @@ function RunnerHistory({ runnerId, currentDate, assignments }) {
     </div>
   )
 }
+
 
 
 
