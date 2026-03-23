@@ -341,19 +341,10 @@ export default function RunnerPage() {
                                   {isLogged ? (
                                     <LogSummary assignmentId={a.id} />
                                   ) : (
-                                    <>
-                                      {!logOpen && (
-                                        <button onClick={() => setLogOpenDate(dateStr)}
-                                          className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
-                                          📋 Log Activity
-                                        </button>
-                                      )}
-                                      {logOpen && (
-                                        <LogForm assignmentId={a.id} assignment={a}
-                                          onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
-                                          onCancel={() => setLogOpenDate(null)} compact />
-                                      )}
-                                    </>
+                                    <button onClick={() => setLogOpenDate(dateStr)}
+                                      className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
+                                      📋 Log Activity
+                                    </button>
                                   )}
                                 </div>
                               </>
@@ -434,6 +425,19 @@ export default function RunnerPage() {
       <p className="text-center text-white/30 text-xs pt-8 max-w-7xl mx-auto">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
+
+      {/* Full-screen log modal */}
+      {logOpenDate && (() => {
+        const a = assignmentByDate[logOpenDate]
+        if (!a) return null
+        return (
+          <LogModal
+            assignment={a}
+            onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
+            onCancel={() => setLogOpenDate(null)}
+          />
+        )
+      })()}
     </div>
   )
 }
@@ -501,14 +505,25 @@ function LogSummary({ assignmentId }) {
   )
 }
 
-// ── Log Form ──────────────────────────────────────────────────────────────────
+// ── Log Modal (full-screen overlay) ───────────────────────────────────────────
 
-function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false }) {
-  const [form,   setForm]   = useState({ actualActivity: '', distance: '', duration: '', rpe: '', notes: '' })
+function LogModal({ assignment, onLogged, onCancel }) {
+  const EMPTY = {
+    actualActivity: '', distance: '', duration: '',
+    avgPace: '', avgHeartRate: '',
+    rpe: '', notes: '',
+    splits: [],
+  }
+  const [form,   setForm]   = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState(null)
 
   function set(field, val) { setForm((f) => ({ ...f, [field]: val })) }
+
+  // Splits helpers
+  function addSplit()         { setForm((f) => ({ ...f, splits: [...f.splits, ''] })) }
+  function removeSplit(i)     { setForm((f) => ({ ...f, splits: f.splits.filter((_, idx) => idx !== i) })) }
+  function setSplit(i, val)   { setForm((f) => { const s = [...f.splits]; s[i] = val; return { ...f, splits: s } }) }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -516,22 +531,25 @@ function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false
     setSaving(true); setError(null)
     const logData = {
       actualActivity: form.actualActivity.trim(),
-      distance: form.distance.trim(),
-      duration: form.duration.trim(),
-      rpe: form.rpe || null,
-      notes: form.notes.trim(),
+      distance:       form.distance.trim(),
+      duration:       form.duration.trim(),
+      avgPace:        form.avgPace.trim(),
+      avgHeartRate:   form.avgHeartRate.trim(),
+      rpe:            form.rpe || null,
+      notes:          form.notes.trim(),
+      splits:         form.splits.filter(Boolean),
     }
     try {
       await addDoc(collection(db, 'workoutLogs'), {
-        assignmentId,
-        runnerId:    assignment.runnerId   || '',
-        runnerName:  assignment.runnerName || '',
-        date:        assignment.date       || '',
+        assignmentId: assignment.id,
+        runnerId:     assignment.runnerId   || '',
+        runnerName:   assignment.runnerName || '',
+        date:         assignment.date       || '',
         ...logData,
         rpe: logData.rpe ? parseInt(logData.rpe, 10) : null,
         submittedAt: serverTimestamp(),
       })
-      storeLog(assignmentId, logData)
+      storeLog(assignment.id, logData)
       onLogged()
     } catch {
       setError('Something went wrong. Try again.')
@@ -540,41 +558,190 @@ function LogForm({ assignmentId, assignment, onLogged, onCancel, compact = false
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
-      <textarea rows={compact ? 2 : 3}
-        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
-        placeholder="What did you do? (completed, modified, skipped…)"
-        value={form.actualActivity} onChange={(e) => set('actualActivity', e.target.value)} />
-      <div className="grid grid-cols-2 gap-1">
-        <input type="text" className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400"
-          placeholder="Distance" value={form.distance} onChange={(e) => set('distance', e.target.value)} />
-        <input type="text" className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400"
-          placeholder="Time" value={form.duration} onChange={(e) => set('duration', e.target.value)} />
-      </div>
-      <div>
-        <p className="text-xs text-gray-400 mb-1">Effort (1–10)</p>
-        <div className="flex gap-1 flex-wrap">
-          {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-            <button key={n} type="button" onClick={() => set('rpe', n === form.rpe ? '' : n)}
-              className={`w-6 h-6 rounded text-xs font-bold transition-colors ${
-                form.rpe === n ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-emerald-300'
-              }`}>{n}</button>
-          ))}
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/70">
+      <div className="w-full max-w-2xl bg-white flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-emerald-700 text-white flex-shrink-0">
+          <div>
+            <p className="font-bold text-lg leading-tight">Log Your Workout</p>
+            {assignment.date && (
+              <p className="text-emerald-200 text-sm">{format(parseISO(assignment.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}</p>
+            )}
+          </div>
+          <button onClick={onCancel} className="text-emerald-200 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Assigned workout summary */}
+        {(assignment.mainWorkout || assignment.warmup) && (
+          <div className="px-6 py-3 bg-emerald-50 border-b border-emerald-100 flex-shrink-0">
+            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-1">Assigned Workout</p>
+            {assignment.warmup     && <p className="text-xs text-gray-600">🔥 {assignment.warmup}</p>}
+            {assignment.mainWorkout && <p className="text-xs text-gray-800 font-medium">⚡ {assignment.mainWorkout}</p>}
+            {assignment.cooldown   && <p className="text-xs text-gray-600">❄️ {assignment.cooldown}</p>}
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* What did you do */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">What did you do? *</label>
+            <textarea
+              rows={4}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+              placeholder="Describe your workout — completed as assigned, modified, skipped, how it felt…"
+              value={form.actualActivity}
+              onChange={(e) => set('actualActivity', e.target.value)}
+            />
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Total Distance</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="e.g. 5.2 miles"
+                value={form.distance}
+                onChange={(e) => set('distance', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Total Time</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="e.g. 42:30"
+                value={form.duration}
+                onChange={(e) => set('duration', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Avg Pace</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="e.g. 8:15 / mile"
+                value={form.avgPace}
+                onChange={(e) => set('avgPace', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Avg Heart Rate</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="e.g. 162 bpm"
+                value={form.avgHeartRate}
+                onChange={(e) => set('avgHeartRate', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Splits */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-gray-700">Splits <span className="text-gray-400 font-normal">(track workouts)</span></label>
+              <button
+                type="button"
+                onClick={addSplit}
+                className="text-xs text-emerald-700 border border-emerald-300 px-2 py-1 rounded hover:bg-emerald-50 font-medium transition-colors"
+              >
+                + Add Split
+              </button>
+            </div>
+            {form.splits.length === 0 ? (
+              <p className="text-xs text-gray-400 italic">No splits added. Click "+ Add Split" for track workouts.</p>
+            ) : (
+              <div className="space-y-2">
+                {form.splits.map((split, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-400 w-12 text-right flex-shrink-0">Lap {i + 1}</span>
+                    <input
+                      type="text"
+                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      placeholder="e.g. 1:32 or 400m in 78s"
+                      value={split}
+                      onChange={(e) => setSplit(i, e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeSplit(i)}
+                      className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Effort */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Effort Level (1–10)</label>
+            <div className="flex gap-2 flex-wrap">
+              {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => set('rpe', n === form.rpe ? '' : n)}
+                  className={`w-9 h-9 rounded text-sm font-bold transition-colors border ${
+                    form.rpe === n
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white border-gray-300 text-gray-600 hover:border-emerald-400'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Notes for Coach</label>
+            <textarea
+              rows={3}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+              placeholder="Anything else you want coach to know…"
+              value={form.notes}
+              onChange={(e) => set('notes', e.target.value)}
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
+        </form>
+
+        {/* Footer actions */}
+        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 flex-shrink-0 bg-white">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded text-sm font-semibold hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSubmit}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded text-sm font-semibold disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Saving…' : 'Submit Log'}
+          </button>
         </div>
       </div>
-      <textarea rows={1}
-        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
-        placeholder="Notes for coach (optional)" value={form.notes} onChange={(e) => set('notes', e.target.value)} />
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      <div className="flex gap-1">
-        <button type="submit" disabled={saving}
-          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors">
-          {saving ? 'Saving…' : 'Submit'}
-        </button>
-        <button type="button" onClick={onCancel}
-          className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100 border border-gray-200">✕</button>
-      </div>
-    </form>
+    </div>
   )
 }
 
