@@ -4,12 +4,12 @@ import {
   collection, query, where, getDocs, addDoc, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { format, parseISO, startOfDay, addDays, startOfWeek, isPast } from 'date-fns'
+import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 import { ctToText } from '../components/CrossTrainingInput'
 import { SWIM_WORKOUTS } from '../data/swimWorkouts'
 import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getStoredLog(assignmentId) {
   try { return JSON.parse(localStorage.getItem(`wlog_${assignmentId}`) || 'null') } catch { return null }
@@ -22,16 +22,13 @@ function getInitials(name = '') {
 }
 function getMondayOf(dateStr) {
   const d = parseISO(dateStr + 'T12:00:00')
-  const mon = startOfWeek(d, { weekStartsOn: 1 })
-  return mon.toISOString().split('T')[0]
+  return startOfWeek(d, { weekStartsOn: 1 }).toISOString().split('T')[0]
 }
 function weekDays(mondayStr) {
   const base = parseISO(mondayStr + 'T12:00:00')
-  return Array.from({ length: 7 }, (_, i) =>
-    addDays(base, i).toISOString().split('T')[0]
-  )
+  return Array.from({ length: 7 }, (_, i) => addDays(base, i).toISOString().split('T')[0])
 }
-function addWeeks(mondayStr, n) {
+function shiftWeek(mondayStr, n) {
   return addDays(parseISO(mondayStr + 'T12:00:00'), n * 7).toISOString().split('T')[0]
 }
 
@@ -70,13 +67,13 @@ ALL_MEETS.forEach((m) => {
   MEETS_BY_DATE[m.date].push(m)
 })
 
-// ── Tabs config ───────────────────────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'schedule',  label: 'My Schedule', emoji: '📅' },
-  { id: 'meets',     label: 'Meets',       emoji: '🏟️' },
-  { id: 'swim',      label: 'Swim',        emoji: '🏊' },
-  { id: 'strength',  label: 'Strength',    emoji: '💪' },
+  { id: 'schedule', label: 'My Schedule' },
+  { id: 'meets',    label: 'Meets'       },
+  { id: 'swim',     label: 'Swim'        },
+  { id: 'strength', label: 'Strength'    },
 ]
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -88,13 +85,14 @@ export default function RunnerPage() {
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
   const [activeTab,    setActiveTab]    = useState('schedule')
+  const [weekOffset,   setWeekOffset]   = useState(0)   // 0 = this week
   const runnerName = assignments[0]?.runnerName || ''
 
   const LS_KEY = `logged_${runnerId}`
-  const [loggedIds,   setLoggedIds]   = useState(() => {
+  const [loggedIds,     setLoggedIds]     = useState(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
   })
-  const [logOpenDate, setLogOpenDate] = useState(null)
+  const [logOpenDate,   setLogOpenDate]   = useState(null)
   const [showPastMeets, setShowPastMeets] = useState(false)
 
   function markLogged(assignmentId) {
@@ -149,280 +147,358 @@ export default function RunnerPage() {
     return map
   }, [assignments])
 
-  // 4 weeks: 1 back, this week, +1, +2
-  const weeks = useMemo(() => {
-    const thisMonday = getMondayOf(today)
-    const startMonday = addWeeks(thisMonday, -1)
-    return [0, 1, 2, 3].map((i) => {
-      const monday = addWeeks(startMonday, i)
-      const days   = weekDays(monday)
-      let label = ''
-      if (i === 0) label = 'Last Week'
-      else if (i === 1) label = 'This Week'
-      else if (i === 2) label = 'Next Week'
-      else label = 'In Two Weeks'
-      return { monday, days, label }
-    })
-  }, [today])
+  const thisMonday   = getMondayOf(today)
+  const currentMonday = shiftWeek(thisMonday, weekOffset)
+  const currentDays   = weekDays(currentMonday)
 
   const upcomingCount = useMemo(
     () => assignments.filter((a) => a.date >= today).length,
     [assignments, today]
   )
+  const loggedCount = loggedIds.length
 
   const upcomingMeets = ALL_MEETS.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))
   const pastMeets     = ALL_MEETS.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))
 
+  const weekLabel = weekOffset === 0 ? 'This Week'
+    : weekOffset === -1 ? 'Last Week'
+    : weekOffset === 1  ? 'Next Week'
+    : weekOffset > 0    ? `In ${weekOffset} Weeks`
+    : `${Math.abs(weekOffset)} Weeks Ago`
+
   if (loading) return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 flex items-center justify-center">
-      <p className="text-white/60">Loading your schedule…</p>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-10 h-10 border-4 border-rose-200 border-t-rose-500 rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-gray-500 text-sm">Loading your schedule…</p>
+      </div>
     </div>
   )
+
   if (error) return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 flex items-center justify-center p-6">
-      <div className="text-center text-white">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <div className="text-center">
         <span className="text-5xl">🤔</span>
-        <p className="mt-4 text-white/70">{error}</p>
+        <p className="mt-4 text-gray-500">{error}</p>
       </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 px-4 pt-6 pb-10">
+    <div className="min-h-screen bg-gray-50">
 
-      {/* School Header */}
-      <div className="max-w-7xl mx-auto mb-4">
-        <div className="bg-white/10 backdrop-blur rounded-3xl px-6 py-4 text-white flex items-center gap-4">
+      {/* ── Header ── */}
+      <header className="bg-gray-950 text-white">
+        {/* School bar */}
+        <div className="border-b border-white/10 px-4 py-3 flex items-center gap-3">
           <img
             src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
             alt="Episcopal Academy"
-            className="w-14 h-14 object-contain flex-shrink-0"
+            className="w-8 h-8 object-contain flex-shrink-0"
             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
           />
-          <div style={{ display: 'none' }} className="w-14 h-14 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-            <span className="text-brand-800 font-black text-xl">EA</span>
+          <div style={{ display: 'none' }} className="w-8 h-8 bg-white flex items-center justify-center flex-shrink-0">
+            <span className="text-gray-900 font-black text-xs">EA</span>
           </div>
-          <div>
-            <p className="text-white/70 text-xs font-semibold uppercase tracking-widest">Episcopal Academy</p>
-            <h1 className="text-2xl font-black leading-tight">Women's XC & Track</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-white/50 uppercase tracking-widest">Episcopal Academy</span>
+            <span className="text-white/20">·</span>
+            <span className="text-xs font-semibold text-rose-400 uppercase tracking-widest">Women's XC & Track</span>
           </div>
         </div>
-      </div>
 
-      {/* Runner Header */}
-      <div className="max-w-7xl mx-auto mb-4">
-        <div className="bg-white/10 backdrop-blur rounded-3xl px-6 py-5 text-white flex items-center justify-between flex-wrap gap-4">
+        {/* Runner hero */}
+        <div className="px-4 py-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-bold">
+            <div className="w-12 h-12 bg-rose-500 flex items-center justify-center text-white font-black text-lg flex-shrink-0">
               {getInitials(runnerName) || '🏃'}
             </div>
             <div>
-              <p className="text-white/60 text-sm">Your Schedule</p>
-              <h2 className="text-2xl font-bold">{runnerName || 'Runner Schedule'}</h2>
+              <p className="text-xs text-white/40 uppercase tracking-widest font-semibold">Athlete</p>
+              <h1 className="text-2xl font-black text-white leading-tight">{runnerName || 'Runner'}</h1>
             </div>
           </div>
-          <div className="flex gap-5 text-sm text-white/70">
-            <span>📅 {upcomingCount} upcoming workouts</span>
-            <span>✅ {loggedIds.length} logged</span>
+          <div className="flex gap-4 text-right">
+            <div>
+              <p className="text-2xl font-black text-rose-400 leading-none">{upcomingCount}</p>
+              <p className="text-xs text-white/40 uppercase tracking-wide mt-0.5">Upcoming</p>
+            </div>
+            <div className="w-px bg-white/10 self-stretch" />
+            <div>
+              <p className="text-2xl font-black text-emerald-400 leading-none">{loggedCount}</p>
+              <p className="text-xs text-white/40 uppercase tracking-wide mt-0.5">Logged</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tab Bar */}
-      <div className="max-w-7xl mx-auto mb-6">
-        <div className="bg-white/10 backdrop-blur rounded-2xl p-1.5 flex gap-1">
+        {/* Tab bar */}
+        <div className="flex border-t border-white/10">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${
+              className={`flex-1 py-3 text-sm font-semibold transition-colors relative ${
                 activeTab === tab.id
-                  ? 'bg-white text-brand-800 shadow-sm'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'text-white'
+                  : 'text-white/40 hover:text-white/70'
               }`}
             >
-              <span>{tab.emoji}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
+              {tab.label}
+              {activeTab === tab.id && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-500" />
+              )}
             </button>
           ))}
         </div>
-      </div>
+      </header>
 
       {/* ── Tab: My Schedule ── */}
       {activeTab === 'schedule' && (
-        <>
-          {weeks.map(({ monday, days, label }) => (
-            <div key={monday} className="max-w-7xl mx-auto mb-5">
-              <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-2 px-1">
-                {label} · {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(days[6] + 'T12:00:00'), 'MMM d')}
+        <div className="max-w-7xl mx-auto px-3 py-4">
+
+          {/* Week navigation */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => setWeekOffset((o) => o - 1)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Prev
+            </button>
+
+            <div className="text-center">
+              <p className="text-sm font-black text-gray-900 uppercase tracking-wide">{weekLabel}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {format(parseISO(currentDays[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(currentDays[6] + 'T12:00:00'), 'MMM d, yyyy')}
               </p>
-              <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <div className="grid grid-cols-7 min-w-[700px]">
+            </div>
 
-                    {/* Date headers */}
-                    {days.map((dateStr) => {
-                      const d       = parseISO(dateStr + 'T12:00:00')
-                      const isToday = dateStr === today
-                      const isPastDay = dateStr < today
-                      const hasWkt  = !!assignmentByDate[dateStr]
-                      const hasMeet = !!MEETS_BY_DATE[dateStr]
-                      return (
-                        <div key={dateStr} className={`text-center py-3 px-2 border-b border-r border-gray-100 last:border-r-0 ${
-                          isToday        ? 'bg-brand-600 text-white'
-                          : hasWkt && !isPastDay ? 'bg-brand-50 text-brand-700'
-                          : isPastDay    ? 'bg-gray-50 text-gray-400'
-                          : 'bg-gray-50 text-gray-300'
-                        }`}>
-                          <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{format(d, 'EEE')}</p>
-                          <p className="text-2xl font-bold leading-none mt-0.5">{format(d, 'd')}</p>
-                          <p className="text-xs opacity-70 mt-0.5">{format(d, 'MMM')}</p>
-                          {hasMeet && <div className="mt-1 w-2 h-2 rounded-full bg-red-400 mx-auto" />}
-                        </div>
-                      )
-                    })}
+            <div className="flex gap-2">
+              {weekOffset !== 0 && (
+                <button
+                  onClick={() => setWeekOffset(0)}
+                  className="px-3 py-2 text-xs font-bold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors uppercase tracking-wide"
+                >
+                  Today
+                </button>
+              )}
+              <button
+                onClick={() => setWeekOffset((o) => o + 1)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Next
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
 
-                    {/* Workout + meet content */}
-                    {days.map((dateStr) => {
-                      const a        = assignmentByDate[dateStr]
-                      const isPastDay = dateStr < today
-                      const isToday  = dateStr === today
-                      const isLogged = a ? loggedIds.includes(a.id) : false
-                      const logOpen  = logOpenDate === dateStr
-                      const dayMeets = MEETS_BY_DATE[dateStr] || []
+          {/* Week grid */}
+          <div className="bg-white border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <div className="grid grid-cols-7 min-w-[640px]">
 
-                      return (
-                        <div key={dateStr} className={`border-r border-gray-100 last:border-r-0 flex flex-col ${isToday ? 'bg-brand-50/40' : 'bg-white'}`}>
-                          <div className="flex-1 flex flex-col p-3 gap-2">
+                {/* Day headers */}
+                {currentDays.map((dateStr) => {
+                  const d        = parseISO(dateStr + 'T12:00:00')
+                  const isToday  = dateStr === today
+                  const isPast   = dateStr < today
+                  const hasMeet  = !!MEETS_BY_DATE[dateStr]
+                  return (
+                    <div
+                      key={dateStr}
+                      className={`text-center py-2.5 px-1 border-r border-gray-100 last:border-r-0 border-b ${
+                        isToday ? 'bg-rose-600 text-white' : isPast ? 'bg-gray-50 text-gray-400' : 'bg-white text-gray-700'
+                      }`}
+                    >
+                      <p className={`text-xs font-bold uppercase tracking-wider ${isToday ? 'text-rose-100' : 'opacity-60'}`}>
+                        {format(d, 'EEE')}
+                      </p>
+                      <p className="text-xl font-black leading-none mt-0.5">{format(d, 'd')}</p>
+                      <p className={`text-xs mt-0.5 ${isToday ? 'text-rose-100' : 'opacity-50'}`}>{format(d, 'MMM')}</p>
+                      {hasMeet && (
+                        <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${isToday ? 'bg-rose-200' : 'bg-rose-500'}`} />
+                      )}
+                    </div>
+                  )
+                })}
 
-                            {/* Meet badges */}
-                            {dayMeets.map((meet) => (
-                              <div key={meet.id} className={`rounded-lg border p-2 ${meet.championship ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                                <p className={`text-xs font-bold mb-0.5 ${meet.championship ? 'text-amber-700' : 'text-red-700'}`}>
-                                  {meet.championship ? '🏆' : '🏟️'} {meet.level === 'MS' ? 'MS — ' : ''}{meet.name}
-                                </p>
-                                <p className="text-xs text-gray-600">📍 {meet.location}</p>
-                                <p className="text-xs text-gray-500">{meet.home ? '🏠 Home' : '✈️ Away'}</p>
-                              </div>
-                            ))}
+                {/* Day content cells */}
+                {currentDays.map((dateStr) => {
+                  const a        = assignmentByDate[dateStr]
+                  const isPast   = dateStr < today
+                  const isToday  = dateStr === today
+                  const isLogged = a ? loggedIds.includes(a.id) : false
+                  const dayMeets = MEETS_BY_DATE[dateStr] || []
 
-                            {a ? (
-                              <>
-                                <div className="flex justify-center">
-                                  {isLogged
-                                    ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">✓ Logged</span>
-                                    : isPastDay
-                                      ? <span className="text-xs bg-gray-100 text-gray-400 font-semibold px-2 py-0.5 rounded-full">Past</span>
-                                      : <span className="text-xs bg-brand-100 text-brand-700 font-semibold px-2 py-0.5 rounded-full">Upcoming</span>
-                                  }
-                                </div>
-                                {a.warmup        && <DayBlock emoji="🔥" label="Warm-Up"   content={a.warmup}        bg="bg-green-50"  border="border-green-200"  text="text-green-800" />}
-                                {a.mainWorkout   && <DayBlock emoji="⚡" label="Main"      content={a.mainWorkout}   bg="bg-indigo-50" border="border-indigo-200" text="text-indigo-800" />}
-                                {a.cooldown      && <DayBlock emoji="❄️" label="Cool-Down" content={a.cooldown}      bg="bg-blue-50"   border="border-blue-200"   text="text-blue-800" />}
-                                {ctToText(a.crossTraining) && <DayBlock emoji="💪" label="Cross" content={ctToText(a.crossTraining)} bg="bg-teal-50" border="border-teal-200" text="text-teal-800" />}
-                                {a.notes         && <DayBlock emoji="📝" label="Notes"     content={a.notes}         bg="bg-amber-50"  border="border-amber-200"  text="text-amber-800" />}
-                                {!a.warmup && !a.mainWorkout && !a.cooldown && !a.crossTraining && !a.notes && (
-                                  <p className="text-xs text-gray-400 text-center py-2 italic">Rest / recovery</p>
-                                )}
+                  return (
+                    <div
+                      key={dateStr}
+                      className={`border-r border-gray-100 last:border-r-0 min-h-[160px] flex flex-col ${
+                        isToday ? 'bg-rose-50/30' : isPast ? 'bg-gray-50/50' : 'bg-white'
+                      }`}
+                    >
+                      <div className="flex-1 flex flex-col p-2 gap-1.5">
 
-                                {(peersByDate[dateStr] || []).length > 0 && (
-                                  <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-2">
-                                    <p className="text-xs font-bold text-indigo-500 mb-1">👯 Partners</p>
-                                    {peersByDate[dateStr].map((p) => (
-                                      <div key={p.id} className="text-xs text-indigo-700 font-medium truncate">
-                                        {p.runnerName}
-                                        {p.mainWorkout && <span className="text-indigo-400 font-normal"> — {p.mainWorkout.slice(0, 40)}</span>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                <div className="mt-auto pt-2">
-                                  {isLogged ? (
-                                    <LogSummary assignmentId={a.id} />
-                                  ) : (
-                                    <button onClick={() => setLogOpenDate(dateStr)}
-                                      className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded-lg font-semibold transition-colors">
-                                      📋 Log Activity
-                                    </button>
-                                  )}
-                                </div>
-                              </>
-                            ) : (
-                              !dayMeets.length && (
-                                <div className="flex-1 flex items-center justify-center py-6">
-                                  <p className="text-xs text-gray-300 italic">Rest</p>
-                                </div>
-                              )
-                            )}
+                        {/* Meet badges */}
+                        {dayMeets.map((meet) => (
+                          <div
+                            key={meet.id}
+                            className={`border-l-2 pl-2 pr-1 py-1 text-xs ${
+                              meet.championship
+                                ? 'border-amber-400 bg-amber-50'
+                                : 'border-rose-400 bg-rose-50'
+                            }`}
+                          >
+                            <p className={`font-bold text-xs leading-tight ${meet.championship ? 'text-amber-700' : 'text-rose-700'}`}>
+                              {meet.championship ? '🏆 ' : ''}{meet.name}
+                            </p>
+                            <p className="text-gray-500 text-xs mt-0.5 leading-tight">{meet.location}</p>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                        ))}
+
+                        {a ? (
+                          <>
+                            {/* Status badge */}
+                            <div className="flex justify-center">
+                              {isLogged
+                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5">✓ Logged</span>
+                                : isPast
+                                  ? <span className="text-xs bg-gray-100 text-gray-400 font-bold px-2 py-0.5">Past</span>
+                                  : isToday
+                                    ? <span className="text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5">Today</span>
+                                    : <span className="text-xs bg-violet-100 text-violet-700 font-bold px-2 py-0.5">Upcoming</span>
+                              }
+                            </div>
+
+                            {a.warmup && (
+                              <div className="border-l-2 border-green-400 pl-2 py-0.5 bg-green-50">
+                                <p className="text-xs font-bold text-green-700">Warm-Up</p>
+                                <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.warmup}</p>
+                              </div>
+                            )}
+                            {a.mainWorkout && (
+                              <div className="border-l-2 border-rose-500 pl-2 py-0.5 bg-rose-50">
+                                <p className="text-xs font-bold text-rose-700">Main</p>
+                                <p className="text-xs text-gray-700 leading-snug line-clamp-3">{a.mainWorkout}</p>
+                              </div>
+                            )}
+                            {a.cooldown && (
+                              <div className="border-l-2 border-sky-400 pl-2 py-0.5 bg-sky-50">
+                                <p className="text-xs font-bold text-sky-700">Cool-Down</p>
+                                <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.cooldown}</p>
+                              </div>
+                            )}
+                            {ctToText(a.crossTraining) && (
+                              <div className="border-l-2 border-teal-400 pl-2 py-0.5 bg-teal-50">
+                                <p className="text-xs font-bold text-teal-700">Cross</p>
+                                <p className="text-xs text-gray-600 leading-snug">{ctToText(a.crossTraining)}</p>
+                              </div>
+                            )}
+                            {a.notes && (
+                              <div className="border-l-2 border-amber-400 pl-2 py-0.5 bg-amber-50">
+                                <p className="text-xs font-bold text-amber-700">Notes</p>
+                                <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.notes}</p>
+                              </div>
+                            )}
+                            {!a.warmup && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && (
+                              <p className="text-xs text-gray-300 text-center py-3 italic">Rest</p>
+                            )}
+
+                            {/* Partners */}
+                            {(peersByDate[dateStr] || []).length > 0 && (
+                              <div className="border border-violet-100 bg-violet-50 p-1.5">
+                                <p className="text-xs font-bold text-violet-500 mb-0.5">Partners</p>
+                                {peersByDate[dateStr].map((p) => (
+                                  <p key={p.id} className="text-xs text-violet-700 truncate font-medium">{p.runnerName}</p>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Log button */}
+                            <div className="mt-auto pt-1">
+                              {isLogged ? (
+                                <LogSummary assignmentId={a.id} />
+                              ) : (
+                                <button
+                                  onClick={() => setLogOpenDate(dateStr)}
+                                  className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 font-bold transition-colors uppercase tracking-wide"
+                                >
+                                  Log Activity
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          !dayMeets.length && (
+                            <div className="flex-1 flex items-center justify-center py-4">
+                              <p className="text-xs text-gray-200 italic">Rest</p>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
-          ))}
-        </>
+          </div>
+        </div>
       )}
 
       {/* ── Tab: Meets ── */}
       {activeTab === 'meets' && (
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
-            <p className="text-white font-black text-lg mb-4">🏟️ Season Meet Schedule</p>
+        <div className="max-w-3xl mx-auto px-4 py-6">
+          <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Season Meet Schedule</h2>
 
-            {upcomingMeets.length > 0 && (
-              <div className="mb-4">
-                <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">Upcoming</p>
-                <div className="space-y-2">
-                  {upcomingMeets.map((meet) => (
-                    <MeetRow key={meet.id} meet={meet} />
-                  ))}
+          {upcomingMeets.length > 0 && (
+            <div className="mb-6">
+              <p className="text-xs font-bold text-rose-600 uppercase tracking-widest mb-2">Upcoming</p>
+              <div className="divide-y divide-gray-100 border border-gray-200 bg-white">
+                {upcomingMeets.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
+              </div>
+            </div>
+          )}
+
+          {pastMeets.length > 0 && (
+            <div>
+              <button
+                onClick={() => setShowPastMeets((v) => !v)}
+                className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 hover:text-gray-600 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                Completed ({pastMeets.length})
+              </button>
+              {showPastMeets && (
+                <div className="divide-y divide-gray-100 border border-gray-200 bg-white opacity-60">
+                  {pastMeets.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
                 </div>
-              </div>
-            )}
-
-            {pastMeets.length > 0 && (
-              <div>
-                <button
-                  onClick={() => setShowPastMeets((v) => !v)}
-                  className="w-full flex items-center justify-between text-white/50 hover:text-white/70 text-xs font-bold uppercase tracking-widest mb-2 transition-colors"
-                >
-                  <span>Completed ({pastMeets.length})</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {showPastMeets && (
-                  <div className="space-y-2 opacity-50">
-                    {pastMeets.map((meet) => (
-                      <MeetRow key={meet.id} meet={meet} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Tab: Swim ── */}
       {activeTab === 'swim' && (
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-3xl mx-auto px-4 py-6">
           <SwimSection />
         </div>
       )}
 
       {/* ── Tab: Strength ── */}
       {activeTab === 'strength' && (
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-3xl mx-auto px-4 py-6">
           <StrengthSection />
         </div>
       )}
 
-      <p className="text-center text-white/30 text-xs pt-8 max-w-7xl mx-auto">
+      <p className="text-center text-gray-300 text-xs py-8">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
 
@@ -442,46 +518,32 @@ export default function RunnerPage() {
   )
 }
 
-// ── Meet Row (runner-facing) ──────────────────────────────────────────────────
+// ── Meet Row ──────────────────────────────────────────────────────────────────
 
 function MeetRow({ meet }) {
   const d = parseISO(meet.date + 'T12:00:00')
   return (
-    <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
-      <div className={`flex-shrink-0 w-10 text-center rounded-lg py-1 ${meet.championship ? 'bg-amber-400/40' : 'bg-white/20'}`}>
-        <p className="text-white/60 text-xs">{format(d, 'MMM')}</p>
-        <p className="text-white font-black text-sm leading-none">{format(d, 'd')}</p>
-        <p className="text-white/50 text-xs">{format(d, 'EEE')}</p>
+    <div className="flex items-center gap-4 px-4 py-3">
+      <div className={`w-10 text-center flex-shrink-0 ${meet.championship ? 'text-amber-600' : 'text-rose-600'}`}>
+        <p className="text-xs font-semibold uppercase">{format(d, 'MMM')}</p>
+        <p className="text-xl font-black leading-none">{format(d, 'd')}</p>
+        <p className="text-xs opacity-60">{format(d, 'EEE')}</p>
       </div>
+      <div className={`w-px self-stretch ${meet.championship ? 'bg-amber-300' : 'bg-rose-300'}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-white text-sm font-semibold truncate">
+        <p className="text-sm font-bold text-gray-900 truncate">
           {meet.championship ? '🏆 ' : ''}{meet.name}
         </p>
-        <p className="text-white/50 text-xs truncate">{meet.location}</p>
+        <p className="text-xs text-gray-400 truncate">{meet.location}</p>
       </div>
-      <div className="flex-shrink-0 flex flex-col items-end gap-1">
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          meet.level === 'MS' ? 'bg-purple-400/30 text-purple-200' : 'bg-red-400/30 text-red-200'
-        }`}>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        <span className={`text-xs font-bold px-2 py-0.5 ${meet.level === 'MS' ? 'bg-violet-100 text-violet-700' : 'bg-rose-100 text-rose-700'}`}>
           {meet.level === 'MS' ? 'MS' : 'Varsity'}
         </span>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          meet.home ? 'bg-emerald-400/30 text-emerald-200' : 'bg-orange-400/30 text-orange-200'
-        }`}>
+        <span className={`text-xs font-bold px-2 py-0.5 ${meet.home ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
           {meet.home ? 'Home' : 'Away'}
         </span>
       </div>
-    </div>
-  )
-}
-
-// ── Day Block ─────────────────────────────────────────────────────────────────
-
-function DayBlock({ emoji, label, content, bg, border, text }) {
-  return (
-    <div className={`rounded-lg border p-2 ${bg} ${border}`}>
-      <p className={`text-xs font-bold mb-0.5 ${text}`}>{emoji} {label}</p>
-      <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{content}</p>
     </div>
   )
 }
@@ -490,43 +552,199 @@ function DayBlock({ emoji, label, content, bg, border, text }) {
 
 function LogSummary({ assignmentId }) {
   const log = getStoredLog(assignmentId)
-  if (!log) return <p className="text-xs text-emerald-600 font-semibold text-center py-1">✅ Logged!</p>
+  if (!log) return <p className="text-xs text-emerald-600 font-bold text-center py-1 uppercase tracking-wide">✓ Logged</p>
   return (
-    <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 space-y-1">
-      <p className="text-xs font-bold text-emerald-600">✅ Your Log</p>
-      {log.actualActivity && <p className="text-xs text-gray-700 line-clamp-3">{log.actualActivity}</p>}
+    <div className="border border-emerald-200 bg-emerald-50 p-2 space-y-1">
+      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">✓ Logged</p>
+      {log.actualActivity && <p className="text-xs text-gray-600 line-clamp-2">{log.actualActivity}</p>}
       <div className="flex gap-2 flex-wrap">
-        {log.distance && <span className="text-xs text-gray-500">📏 {log.distance}</span>}
-        {log.duration  && <span className="text-xs text-gray-500">⏱ {log.duration}</span>}
-        {log.rpe       && <span className="text-xs text-gray-500">💪 RPE {log.rpe}/10</span>}
+        {log.distance    && <span className="text-xs text-gray-500 font-medium">{log.distance}</span>}
+        {log.avgPace     && <span className="text-xs text-gray-500 font-medium">@ {log.avgPace}</span>}
+        {log.avgHeartRate && <span className="text-xs text-gray-500 font-medium">♥ {log.avgHeartRate}</span>}
+        {log.rpe         && <span className="text-xs text-rose-600 font-bold">RPE {log.rpe}</span>}
       </div>
-      {log.notes && <p className="text-xs text-gray-400 italic line-clamp-2">{log.notes}</p>}
     </div>
   )
 }
 
-// ── Log Modal (full-screen overlay) ───────────────────────────────────────────
+// ── Swim Section ──────────────────────────────────────────────────────────────
+
+function SwimSection() {
+  const [selectedId, setSelectedId] = useState(null)
+  const workout = selectedId ? SWIM_WORKOUTS.find((w) => w.id === selectedId) : null
+
+  return (
+    <div>
+      <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Swim Workouts</h2>
+
+      <select
+        value={selectedId || ''}
+        onChange={(e) => setSelectedId(e.target.value || null)}
+        className="w-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-400 mb-3"
+      >
+        <option value="">— Select a swim workout —</option>
+        {SWIM_WORKOUTS.map((w) => (
+          <option key={w.id} value={w.id}>{w.title} · {w.subtitle}</option>
+        ))}
+      </select>
+
+      <div className="flex flex-wrap gap-2 mb-5">
+        {SWIM_WORKOUTS.map((w) => (
+          <button
+            key={w.id}
+            onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
+            className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border transition-colors ${
+              selectedId === w.id
+                ? 'bg-rose-600 text-white border-rose-600'
+                : 'bg-white text-gray-600 border-gray-300 hover:border-rose-400 hover:text-rose-600'
+            }`}
+          >
+            {w.type}
+          </button>
+        ))}
+      </div>
+
+      {workout && (
+        <div className="border border-gray-200 bg-white overflow-hidden">
+          <div className="bg-gray-950 text-white px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="font-black text-base">{workout.title}</p>
+              <p className="text-white/50 text-xs mt-0.5">{workout.subtitle}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-black text-rose-400">
+                {workout.sets.reduce((s, x) => s + (x.yards || 0), 0).toLocaleString()}
+              </p>
+              <p className="text-white/40 text-xs uppercase tracking-wide">yards</p>
+            </div>
+          </div>
+          {workout.note && (
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3">
+              <p className="text-xs font-bold text-amber-700 mb-1 uppercase tracking-wide">Coach Note</p>
+              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
+            </div>
+          )}
+          <div className="divide-y divide-gray-100">
+            {workout.sets.map((set, i) => (
+              <div key={i} className="px-5 py-3 flex items-start gap-4">
+                <span className="text-xs font-black text-gray-300 w-5 flex-shrink-0 mt-0.5">{i + 1}</span>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{set.label}</p>
+                  <p className="text-sm text-gray-800">{set.detail}</p>
+                  {set.rest && <p className="text-xs text-gray-400 mt-0.5">{set.rest}</p>}
+                </div>
+                {set.yards > 0 && (
+                  <span className="text-sm font-black text-rose-600 flex-shrink-0">{set.yards} yds</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Strength Section ──────────────────────────────────────────────────────────
+
+function StrengthSection() {
+  const [selectedId, setSelectedId] = useState(null)
+  const workout = selectedId ? STRENGTH_WORKOUTS.find((w) => w.id === selectedId) : null
+
+  return (
+    <div>
+      <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Strength Workouts</h2>
+
+      <select
+        value={selectedId || ''}
+        onChange={(e) => setSelectedId(e.target.value || null)}
+        className="w-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-400 mb-3"
+      >
+        <option value="">— Select a strength workout —</option>
+        {STRENGTH_WORKOUTS.map((w) => (
+          <option key={w.id} value={w.id}>{w.title} · {w.type}</option>
+        ))}
+      </select>
+
+      <div className="flex flex-wrap gap-2 mb-5">
+        {STRENGTH_WORKOUTS.map((w) => (
+          <button
+            key={w.id}
+            onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
+            className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border transition-colors ${
+              selectedId === w.id
+                ? 'bg-rose-600 text-white border-rose-600'
+                : 'bg-white text-gray-600 border-gray-300 hover:border-rose-400 hover:text-rose-600'
+            }`}
+          >
+            {w.title}
+          </button>
+        ))}
+      </div>
+
+      {workout && (
+        <div className="border border-gray-200 bg-white overflow-hidden">
+          <div className="bg-gray-950 text-white px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="font-black text-base">{workout.title}</p>
+              <p className="text-rose-400 text-xs font-bold uppercase tracking-wide mt-0.5">{workout.type}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-black text-rose-400">{workout.exercises.length}</p>
+              <p className="text-white/40 text-xs uppercase tracking-wide">exercises</p>
+            </div>
+          </div>
+          {workout.note && (
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3">
+              <p className="text-xs font-bold text-amber-700 mb-1 uppercase tracking-wide">Coach Note</p>
+              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
+            </div>
+          )}
+          <div className="divide-y divide-gray-100">
+            {workout.exercises.map((ex, i) => (
+              <div key={i} className="px-5 py-3 flex items-start gap-4">
+                <span className="text-xs font-black text-gray-300 w-5 flex-shrink-0 mt-0.5">{i + 1}</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-gray-900">{ex.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{ex.reps}</p>
+                  {ex.videos.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {ex.videos.map((v, vi) => (
+                        <a key={vi} href={v.url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors"
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M21.593 7.203a2.506 2.506 0 00-1.762-1.766C18.265 5.007 12 5 12 5s-6.264-.007-7.831.404a2.56 2.56 0 00-1.766 1.778c-.413 1.566-.417 4.814-.417 4.814s-.004 3.264.406 4.814c.23.857.905 1.534 1.763 1.765 1.582.43 7.83.437 7.83.437s6.265.007 7.831-.403a2.515 2.515 0 001.767-1.763c.414-1.565.417-4.812.417-4.812s.02-3.265-.407-4.831zM9.996 15.005l.005-6 5.207 3.005-5.212 2.995z"/>
+                          </svg>
+                          {v.label}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Log Modal (full-screen) ───────────────────────────────────────────────────
 
 function LogModal({ assignment, onLogged, onCancel }) {
-  const EMPTY = {
-    actualActivity: '', distance: '', duration: '',
-    avgPace: '', avgHeartRate: '',
-    rpe: '', notes: '',
-    splits: [],
-  }
+  const EMPTY = { actualActivity: '', distance: '', duration: '', avgPace: '', avgHeartRate: '', rpe: '', notes: '', splits: [] }
   const [form,   setForm]   = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState(null)
 
   function set(field, val) { setForm((f) => ({ ...f, [field]: val })) }
+  function addSplit()       { setForm((f) => ({ ...f, splits: [...f.splits, ''] })) }
+  function removeSplit(i)   { setForm((f) => ({ ...f, splits: f.splits.filter((_, idx) => idx !== i) })) }
+  function setSplit(i, val) { setForm((f) => { const s = [...f.splits]; s[i] = val; return { ...f, splits: s } }) }
 
-  // Splits helpers
-  function addSplit()         { setForm((f) => ({ ...f, splits: [...f.splits, ''] })) }
-  function removeSplit(i)     { setForm((f) => ({ ...f, splits: f.splits.filter((_, idx) => idx !== i) })) }
-  function setSplit(i, val)   { setForm((f) => { const s = [...f.splits]; s[i] = val; return { ...f, splits: s } }) }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
+  async function handleSubmit() {
     if (!form.actualActivity.trim()) { setError('Please describe what you did.'); return }
     setSaving(true); setError(null)
     const logData = {
@@ -558,124 +776,91 @@ function LogModal({ assignment, onLogged, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/70">
-      <div className="w-full max-w-2xl bg-white flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60">
+      <div className="w-full max-w-xl bg-white flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-emerald-700 text-white flex-shrink-0">
+        <div className="bg-gray-950 text-white px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div>
-            <p className="font-bold text-lg leading-tight">Log Your Workout</p>
+            <p className="font-black text-lg">Log Your Workout</p>
             {assignment.date && (
-              <p className="text-emerald-200 text-sm">{format(parseISO(assignment.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}</p>
+              <p className="text-rose-400 text-xs font-semibold mt-0.5">
+                {format(parseISO(assignment.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
+              </p>
             )}
           </div>
-          <button onClick={onCancel} className="text-emerald-200 hover:text-white transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <button onClick={onCancel} className="text-white/40 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Assigned workout summary */}
+        {/* Assigned workout quick-ref */}
         {(assignment.mainWorkout || assignment.warmup) && (
-          <div className="px-6 py-3 bg-emerald-50 border-b border-emerald-100 flex-shrink-0">
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-1">Assigned Workout</p>
-            {assignment.warmup     && <p className="text-xs text-gray-600">🔥 {assignment.warmup}</p>}
-            {assignment.mainWorkout && <p className="text-xs text-gray-800 font-medium">⚡ {assignment.mainWorkout}</p>}
-            {assignment.cooldown   && <p className="text-xs text-gray-600">❄️ {assignment.cooldown}</p>}
+          <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 flex-shrink-0">
+            <p className="text-xs font-black text-rose-600 uppercase tracking-widest mb-1">Assigned</p>
+            {assignment.warmup      && <p className="text-xs text-gray-600">Warm-Up: {assignment.warmup}</p>}
+            {assignment.mainWorkout && <p className="text-xs font-semibold text-gray-800">Main: {assignment.mainWorkout}</p>}
+            {assignment.cooldown    && <p className="text-xs text-gray-600">Cool-Down: {assignment.cooldown}</p>}
           </div>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        {/* Scrollable form */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* What did you do */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">What did you do? *</label>
-            <textarea
-              rows={4}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
-              placeholder="Describe your workout — completed as assigned, modified, skipped, how it felt…"
-              value={form.actualActivity}
-              onChange={(e) => set('actualActivity', e.target.value)}
+            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-1.5">What did you do? *</label>
+            <textarea rows={4}
+              className="w-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 resize-none"
+              placeholder="Describe your workout — completed, modified, how it felt…"
+              value={form.actualActivity} onChange={(e) => set('actualActivity', e.target.value)}
             />
           </div>
 
-          {/* Stats row */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Total Distance</label>
-              <input
-                type="text"
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="e.g. 5.2 miles"
-                value={form.distance}
-                onChange={(e) => set('distance', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Total Time</label>
-              <input
-                type="text"
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="e.g. 42:30"
-                value={form.duration}
-                onChange={(e) => set('duration', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Avg Pace</label>
-              <input
-                type="text"
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="e.g. 8:15 / mile"
-                value={form.avgPace}
-                onChange={(e) => set('avgPace', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Avg Heart Rate</label>
-              <input
-                type="text"
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="e.g. 162 bpm"
-                value={form.avgHeartRate}
-                onChange={(e) => set('avgHeartRate', e.target.value)}
-              />
-            </div>
+            {[
+              ['Total Distance', 'distance', 'e.g. 5.2 miles'],
+              ['Total Time',     'duration', 'e.g. 42:30'],
+              ['Avg Pace',       'avgPace',  'e.g. 8:15 / mile'],
+              ['Avg Heart Rate', 'avgHeartRate', 'e.g. 162 bpm'],
+            ].map(([label, field, placeholder]) => (
+              <div key={field}>
+                <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-1.5">{label}</label>
+                <input type="text"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                  placeholder={placeholder}
+                  value={form[field]} onChange={(e) => set(field, e.target.value)}
+                />
+              </div>
+            ))}
           </div>
 
           {/* Splits */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold text-gray-700">Splits <span className="text-gray-400 font-normal">(track workouts)</span></label>
-              <button
-                type="button"
-                onClick={addSplit}
-                className="text-xs text-emerald-700 border border-emerald-300 px-2 py-1 rounded hover:bg-emerald-50 font-medium transition-colors"
+              <label className="text-xs font-black text-gray-700 uppercase tracking-widest">
+                Splits <span className="text-gray-400 font-normal normal-case tracking-normal">(track workouts)</span>
+              </label>
+              <button type="button" onClick={addSplit}
+                className="text-xs font-bold text-rose-600 border border-rose-300 px-2 py-1 hover:bg-rose-50 transition-colors uppercase tracking-wide"
               >
-                + Add Split
+                + Add
               </button>
             </div>
             {form.splits.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No splits added. Click "+ Add Split" for track workouts.</p>
+              <p className="text-xs text-gray-300 italic">No splits — click + Add for track workouts</p>
             ) : (
               <div className="space-y-2">
                 {form.splits.map((split, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-gray-400 w-12 text-right flex-shrink-0">Lap {i + 1}</span>
-                    <input
-                      type="text"
-                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                      placeholder="e.g. 1:32 or 400m in 78s"
-                      value={split}
-                      onChange={(e) => setSplit(i, e.target.value)}
+                    <span className="text-xs font-black text-gray-300 w-10 text-right">Lap {i + 1}</span>
+                    <input type="text"
+                      className="flex-1 border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                      placeholder="e.g. 1:32"
+                      value={split} onChange={(e) => setSplit(i, e.target.value)}
                     />
-                    <button
-                      type="button"
-                      onClick={() => removeSplit(i)}
-                      className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
-                    >
+                    <button type="button" onClick={() => removeSplit(i)} className="text-gray-300 hover:text-red-500 transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
@@ -688,258 +873,46 @@ function LogModal({ assignment, onLogged, onCancel }) {
 
           {/* Effort */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Effort Level (1–10)</label>
-            <div className="flex gap-2 flex-wrap">
+            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-2">Effort Level (1–10)</label>
+            <div className="flex gap-1.5 flex-wrap">
               {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => set('rpe', n === form.rpe ? '' : n)}
-                  className={`w-9 h-9 rounded text-sm font-bold transition-colors border ${
+                <button key={n} type="button" onClick={() => set('rpe', n === form.rpe ? '' : n)}
+                  className={`w-9 h-9 text-sm font-black transition-colors border ${
                     form.rpe === n
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-white border-gray-300 text-gray-600 hover:border-emerald-400'
+                      ? 'bg-rose-600 text-white border-rose-600'
+                      : 'bg-white border-gray-300 text-gray-500 hover:border-rose-400'
                   }`}
-                >
-                  {n}
-                </button>
+                >{n}</button>
               ))}
             </div>
           </div>
 
-          {/* Notes */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Notes for Coach</label>
-            <textarea
-              rows={3}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
-              placeholder="Anything else you want coach to know…"
-              value={form.notes}
-              onChange={(e) => set('notes', e.target.value)}
+            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-1.5">Notes for Coach</label>
+            <textarea rows={3}
+              className="w-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 resize-none"
+              placeholder="Anything else coach should know…"
+              value={form.notes} onChange={(e) => set('notes', e.target.value)}
             />
           </div>
 
-          {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
-        </form>
+          {error && <p className="text-sm font-semibold text-red-500">{error}</p>}
+        </div>
 
-        {/* Footer actions */}
-        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 flex-shrink-0 bg-white">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded text-sm font-semibold hover:bg-gray-50 transition-colors"
+        {/* Actions */}
+        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 flex-shrink-0">
+          <button type="button" onClick={onCancel}
+            className="flex-1 border border-gray-300 text-gray-700 py-2.5 text-sm font-black uppercase tracking-wide hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={handleSubmit}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded text-sm font-semibold disabled:opacity-50 transition-colors"
+          <button type="button" onClick={handleSubmit} disabled={saving}
+            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2.5 text-sm font-black uppercase tracking-wide disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving…' : 'Submit Log'}
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── Swim Workouts Section ─────────────────────────────────────────────────────
-
-function SwimSection() {
-  const [selectedId, setSelectedId] = useState(null)
-  const workout = selectedId ? SWIM_WORKOUTS.find((w) => w.id === selectedId) : null
-
-  return (
-    <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">🏊</span>
-        <div>
-          <p className="text-white font-black text-lg leading-tight">Swim Workouts</p>
-          <p className="text-white/50 text-xs">5 cross-training sessions from Coach</p>
-        </div>
-      </div>
-
-      {/* Dropdown */}
-      <select
-        value={selectedId || ''}
-        onChange={(e) => setSelectedId(e.target.value || null)}
-        className="w-full bg-white/10 text-white border border-white/20 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40 mb-3"
-      >
-        <option value="">— choose a workout —</option>
-        {SWIM_WORKOUTS.map((w) => (
-          <option key={w.id} value={w.id} className="text-gray-900 bg-white">
-            {w.title} · {w.subtitle}
-          </option>
-        ))}
-      </select>
-
-      {/* Quick chips */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {SWIM_WORKOUTS.map((w) => (
-          <button
-            key={w.id}
-            onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-              selectedId === w.id
-                ? 'bg-white text-brand-700 border-white'
-                : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
-            }`}
-          >
-            #{w.id.replace('swim', '')} · {w.type}
-          </button>
-        ))}
-      </div>
-
-      {/* Workout detail */}
-      {workout && (
-        <div className="bg-white rounded-2xl overflow-hidden">
-          <div className="bg-gradient-to-r from-cyan-600 to-blue-700 px-5 py-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-white font-black text-base leading-tight">{workout.title}</p>
-              <p className="text-white/70 text-xs mt-0.5">{workout.subtitle}</p>
-            </div>
-            <div className="bg-white/20 rounded-xl px-3 py-2 text-center flex-shrink-0">
-              <p className="text-white font-black text-lg leading-none">
-                {workout.sets.reduce((s, x) => s + (x.yards || 0), 0).toLocaleString()}
-              </p>
-              <p className="text-white/70 text-xs">yards</p>
-            </div>
-          </div>
-          {workout.note && (
-            <div className="bg-amber-50 border-b border-amber-100 px-5 py-3">
-              <p className="text-xs font-bold text-amber-700 mb-1">📋 Note</p>
-              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
-            </div>
-          )}
-          <div className="divide-y divide-gray-100">
-            {workout.sets.map((set, i) => (
-              <div key={i} className="px-5 py-3 flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-blue-600">{i + 1}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">{set.label}</p>
-                  <p className="text-sm text-gray-800 leading-relaxed">{set.detail}</p>
-                  {set.rest && <p className="text-xs text-gray-400 italic mt-0.5">⏱ {set.rest}</p>}
-                </div>
-                {set.yards > 0 && (
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-bold text-blue-600">{set.yards}</p>
-                    <p className="text-xs text-gray-400">yds</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Strength Workouts Section ─────────────────────────────────────────────────
-
-function StrengthSection() {
-  const [selectedId, setSelectedId] = useState(null)
-  const workout = selectedId ? STRENGTH_WORKOUTS.find((w) => w.id === selectedId) : null
-
-  return (
-    <div className="bg-white/10 backdrop-blur rounded-3xl px-5 py-5">
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">💪</span>
-        <div>
-          <p className="text-white font-black text-lg leading-tight">Strength Workouts</p>
-          <p className="text-white/50 text-xs">Harvard Track program — 4 workouts with video guides</p>
-        </div>
-      </div>
-
-      {/* Dropdown */}
-      <select
-        value={selectedId || ''}
-        onChange={(e) => setSelectedId(e.target.value || null)}
-        className="w-full bg-white/10 text-white border border-white/20 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-white/40 mb-3"
-      >
-        <option value="">— choose a workout —</option>
-        {STRENGTH_WORKOUTS.map((w) => (
-          <option key={w.id} value={w.id} className="text-gray-900 bg-white">
-            {w.title} · {w.type}
-          </option>
-        ))}
-      </select>
-
-      {/* Quick chips */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {STRENGTH_WORKOUTS.map((w) => (
-          <button
-            key={w.id}
-            onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border ${
-              selectedId === w.id
-                ? 'bg-white text-brand-700 border-white'
-                : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20'
-            }`}
-          >
-            #{w.id.replace('str', '')} · {w.type}
-          </button>
-        ))}
-      </div>
-
-      {/* Workout detail */}
-      {workout && (
-        <div className="bg-white rounded-2xl overflow-hidden">
-          <div className="bg-gradient-to-r from-orange-600 to-red-700 px-5 py-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-white font-black text-base leading-tight">{workout.title}</p>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${workout.typeBadge}`}>
-                {workout.type}
-              </span>
-            </div>
-            <div className="bg-white/20 rounded-xl px-3 py-2 text-center flex-shrink-0">
-              <p className="text-white font-black text-lg leading-none">{workout.exercises.length}</p>
-              <p className="text-white/70 text-xs">exercises</p>
-            </div>
-          </div>
-          {workout.note && (
-            <div className="bg-amber-50 border-b border-amber-100 px-5 py-3">
-              <p className="text-xs font-bold text-amber-700 mb-1">📋 Note</p>
-              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
-            </div>
-          )}
-          <div className="divide-y divide-gray-100">
-            {workout.exercises.map((ex, i) => (
-              <div key={i} className="px-5 py-3 flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-orange-600">{i + 1}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{ex.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{ex.reps}</p>
-                  {ex.videos.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {ex.videos.map((v, vi) => (
-                        <a
-                          key={vi}
-                          href={v.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors"
-                        >
-                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M21.593 7.203a2.506 2.506 0 00-1.762-1.766C18.265 5.007 12 5 12 5s-6.264-.007-7.831.404a2.56 2.56 0 00-1.766 1.778c-.413 1.566-.417 4.814-.417 4.814s-.004 3.264.406 4.814c.23.857.905 1.534 1.763 1.765 1.582.43 7.83.437 7.83.437s6.265.007 7.831-.403a2.515 2.515 0 001.767-1.763c.414-1.565.417-4.812.417-4.812s.02-3.265-.407-4.831zM9.996 15.005l.005-6 5.207 3.005-5.212 2.995z"/>
-                          </svg>
-                          {v.label}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
