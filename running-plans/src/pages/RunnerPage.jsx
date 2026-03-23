@@ -1,8 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   collection, query, where, getDocs, addDoc, serverTimestamp,
+  doc, getDoc, updateDoc,
 } from 'firebase/firestore'
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db } from '../firebase/config'
 import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 import { ctToText } from '../components/CrossTrainingInput'
@@ -92,8 +94,16 @@ export default function RunnerPage() {
   const [loggedIds,     setLoggedIds]     = useState(() => {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
   })
-  const [logOpenDate,   setLogOpenDate]   = useState(null)
-  const [showPastMeets, setShowPastMeets] = useState(false)
+  const [logOpenDate,      setLogOpenDate]      = useState(null)
+  const [showPastMeets,    setShowPastMeets]    = useState(false)
+  const [profilePicUrl,    setProfilePicUrl]    = useState(null)
+  const [uploading,        setUploading]        = useState(false)
+  const fileInputRef = useRef(null)
+
+  // Password / lock
+  const [pagePassword,     setPagePassword]     = useState('')   // stored password
+  const [isLocked,         setIsLocked]         = useState(false)
+  const [showSetPassword,  setShowSetPassword]  = useState(false)
 
   function markLogged(assignmentId) {
     setLoggedIds((prev) => {
@@ -130,6 +140,17 @@ export default function RunnerPage() {
           })
           setPeersByDate(map)
         }
+        // Load runner doc (profile pic + password)
+        const runnerDoc = await getDoc(doc(db, 'runners', runnerId))
+        if (runnerDoc.exists()) {
+          const data = runnerDoc.data()
+          if (data.profilePicUrl) setProfilePicUrl(data.profilePicUrl)
+          if (data.pagePassword) {
+            setPagePassword(data.pagePassword)
+            const alreadyUnlocked = sessionStorage.getItem(`unlocked_${runnerId}`)
+            if (!alreadyUnlocked) setIsLocked(true)
+          }
+        }
       } catch {
         setError('Unable to load your schedule. Please try again later.')
       } finally {
@@ -138,6 +159,41 @@ export default function RunnerPage() {
     }
     load()
   }, [runnerId])
+
+  async function handlePicUpload(file) {
+    if (!file) return
+    setUploading(true)
+    try {
+      const storage = getStorage()
+      const picRef  = storageRef(storage, `profilePics/${runnerId}`)
+      await uploadBytes(picRef, file)
+      const url = await getDownloadURL(picRef)
+      await updateDoc(doc(db, 'runners', runnerId), { profilePicUrl: url })
+      setProfilePicUrl(url)
+    } catch (err) {
+      console.error('Photo upload failed:', err)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleSavePassword(newPwd) {
+    const trimmed = newPwd.trim()
+    await updateDoc(doc(db, 'runners', runnerId), { pagePassword: trimmed || null })
+    setPagePassword(trimmed)
+    // If they set a password, keep themselves unlocked for this session
+    if (trimmed) sessionStorage.setItem(`unlocked_${runnerId}`, '1')
+    setShowSetPassword(false)
+  }
+
+  function handleUnlock(entered) {
+    if (entered === pagePassword) {
+      sessionStorage.setItem(`unlocked_${runnerId}`, '1')
+      setIsLocked(false)
+      return true
+    }
+    return false
+  }
 
   const today = startOfDay(new Date()).toISOString().split('T')[0]
 
@@ -189,13 +245,21 @@ export default function RunnerPage() {
     </div>
   )
 
+  if (isLocked) return (
+    <LockScreen
+      runnerName={runnerName}
+      profilePicUrl={profilePicUrl}
+      onUnlock={handleUnlock}
+    />
+  )
+
   return (
     <div className="min-h-screen bg-pink-50">
 
       {/* ── Header ── */}
       <header className="bg-gradient-to-br from-rose-100 via-pink-50 to-violet-100 border-b border-rose-200">
         {/* School bar */}
-        <div className="border-b border-rose-200/60 px-4 py-3 flex items-center justify-center gap-3">
+        <div className="border-b border-rose-200/60 px-4 py-3 flex items-center justify-center gap-3 relative">
           <img
             src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
             alt="Episcopal Academy"
@@ -210,13 +274,61 @@ export default function RunnerPage() {
             <span className="text-rose-200">·</span>
             <span className="text-xs font-semibold text-violet-500 uppercase tracking-widest">Women's XC & Track</span>
           </div>
+
+          {/* Password button — top-right corner */}
+          <button
+            onClick={() => setShowSetPassword(true)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1 text-rose-300 hover:text-rose-500 transition-colors"
+            title={pagePassword ? 'Change password' : 'Set a password'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <span className="text-xs font-semibold">{pagePassword ? '🔒' : '🔓'}</span>
+          </button>
         </div>
 
         {/* Runner hero */}
         <div className="px-4 py-6 flex flex-col items-center gap-3">
-          <div className="w-14 h-14 bg-rose-300 rounded-2xl flex items-center justify-center text-rose-900 font-black text-xl flex-shrink-0">
-            {getInitials(runnerName) || '🏃'}
+
+          {/* Hidden file input */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handlePicUpload(file)
+              e.target.value = ''
+            }}
+          />
+
+          {/* Clickable avatar */}
+          <div
+            className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 cursor-pointer relative group shadow-md"
+            onClick={() => fileInputRef.current?.click()}
+            title="Tap to change your photo"
+          >
+            {profilePicUrl ? (
+              <img src={profilePicUrl} alt={runnerName} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-rose-300 flex items-center justify-center text-rose-900 font-black text-xl">
+                {getInitials(runnerName) || '🏃'}
+              </div>
+            )}
+            {/* Hover overlay */}
+            <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <span className="text-white text-lg">📷</span>
+            </div>
+            {/* Upload spinner overlay */}
+            {uploading && (
+              <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                <div className="w-5 h-5 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
           </div>
+
           <div className="text-center">
             <p className="text-xs text-rose-400 uppercase tracking-widest font-semibold">Athlete</p>
             <h1 className="text-2xl font-black text-rose-900 leading-tight">{runnerName || 'Runner'}</h1>
@@ -556,6 +668,15 @@ export default function RunnerPage() {
       <p className="text-center text-rose-300 text-xs py-8">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
+
+      {/* Set-password modal */}
+      {showSetPassword && (
+        <SetPasswordModal
+          currentPassword={pagePassword}
+          onSave={handleSavePassword}
+          onCancel={() => setShowSetPassword(false)}
+        />
+      )}
 
       {/* Full-screen log modal */}
       {logOpenDate && (() => {
@@ -967,6 +1088,191 @@ function LogModal({ assignment, onLogged, onCancel }) {
             {saving ? 'Saving…' : 'Submit Log'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Lock Screen ───────────────────────────────────────────────────────────────
+
+function LockScreen({ runnerName, profilePicUrl, onUnlock }) {
+  const [input,  setInput]  = useState('')
+  const [error,  setError]  = useState(false)
+  const [shake,  setShake]  = useState(false)
+
+  function attempt(e) {
+    e.preventDefault()
+    const ok = onUnlock(input)
+    if (!ok) {
+      setError(true)
+      setShake(true)
+      setTimeout(() => setShake(false), 500)
+      setInput('')
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-rose-100 via-pink-50 to-violet-100 flex items-center justify-center p-6">
+      <div className={`w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden transition-transform ${shake ? 'animate-bounce' : ''}`}>
+
+        {/* Top band */}
+        <div className="bg-gradient-to-r from-rose-200 via-pink-100 to-violet-200 px-6 py-8 flex flex-col items-center gap-3">
+          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md flex-shrink-0">
+            {profilePicUrl ? (
+              <img src={profilePicUrl} alt={runnerName} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-rose-300 flex items-center justify-center text-rose-900 font-black text-xl">
+                {runnerName?.trim().split(/\s+/).map((w) => w[0]?.toUpperCase()).join('') || '🏃'}
+              </div>
+            )}
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-rose-400 uppercase tracking-widest font-semibold">Athlete Page</p>
+            <p className="text-xl font-black text-rose-900">{runnerName || 'Runner'}</p>
+          </div>
+          <div className="flex items-center gap-1.5 text-rose-400 text-xs font-semibold">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            This page is password protected
+          </div>
+        </div>
+
+        {/* Password form */}
+        <form onSubmit={attempt} className="px-6 py-6 flex flex-col gap-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+              Enter your password
+            </label>
+            <input
+              type="password"
+              value={input}
+              onChange={(e) => { setInput(e.target.value); setError(false) }}
+              autoFocus
+              placeholder="••••••••"
+              className={`w-full border-2 rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-colors ${
+                error
+                  ? 'border-red-300 bg-red-50 text-red-700 placeholder-red-300'
+                  : 'border-rose-200 bg-pink-50 text-rose-900 placeholder-rose-200 focus:border-rose-400'
+              }`}
+            />
+            {error && (
+              <p className="text-xs text-red-400 font-semibold mt-1.5">Incorrect password — try again.</p>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={!input}
+            className="w-full bg-rose-400 hover:bg-rose-500 disabled:opacity-40 text-white font-black py-3 rounded-xl uppercase tracking-wide text-sm transition-colors"
+          >
+            Unlock
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Set Password Modal ────────────────────────────────────────────────────────
+
+function SetPasswordModal({ currentPassword, onSave, onCancel }) {
+  const [newPwd,     setNewPwd]     = useState('')
+  const [confirm,    setConfirm]    = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [saved,      setSaved]      = useState(false)
+  const [mismatch,   setMismatch]   = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (newPwd && newPwd !== confirm) { setMismatch(true); return }
+    setSaving(true)
+    await onSave(newPwd)
+    setSaved(true)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-rose-100 to-violet-100 px-6 py-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-rose-400 uppercase tracking-widest font-semibold">Page Security</p>
+            <h2 className="text-lg font-black text-rose-900">
+              {currentPassword ? 'Change Password' : 'Set a Password'}
+            </h2>
+          </div>
+          <button onClick={onCancel} className="text-rose-300 hover:text-rose-600 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {saved ? (
+          <div className="px-6 py-10 text-center">
+            <p className="text-4xl mb-3">{newPwd ? '🔒' : '🔓'}</p>
+            <p className="font-black text-rose-800 text-lg">
+              {newPwd ? 'Password set!' : 'Password removed'}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              {newPwd ? 'Your page is now protected.' : 'Anyone with the link can now view your page.'}
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-6 flex flex-col gap-4">
+            <p className="text-xs text-gray-500">
+              {currentPassword
+                ? 'Enter a new password below, or leave both fields empty to remove your password.'
+                : 'Choose a password. Anyone visiting your page will need to enter it.'}
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                {currentPassword ? 'New password' : 'Password'}
+              </label>
+              <input
+                type="password"
+                value={newPwd}
+                onChange={(e) => { setNewPwd(e.target.value); setMismatch(false) }}
+                placeholder="Choose a password"
+                className="w-full border-2 border-rose-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:border-rose-400 bg-pink-50 text-rose-900 placeholder-rose-200 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                Confirm password
+              </label>
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => { setConfirm(e.target.value); setMismatch(false) }}
+                placeholder="Type it again"
+                className={`w-full border-2 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition-colors ${
+                  mismatch
+                    ? 'border-red-300 bg-red-50 text-red-700 placeholder-red-300'
+                    : 'border-rose-200 bg-pink-50 text-rose-900 placeholder-rose-200 focus:border-rose-400'
+                }`}
+              />
+              {mismatch && <p className="text-xs text-red-400 font-semibold mt-1">Passwords don't match.</p>}
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={onCancel}
+                className="flex-1 border border-rose-200 text-rose-400 py-2.5 rounded-xl text-sm font-black uppercase tracking-wide hover:bg-rose-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button type="submit" disabled={saving}
+                className="flex-1 bg-rose-400 hover:bg-rose-500 text-white py-2.5 rounded-xl text-sm font-black uppercase tracking-wide disabled:opacity-50 transition-colors"
+              >
+                {saving ? 'Saving…' : newPwd ? 'Save Password' : 'Remove Password'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )
