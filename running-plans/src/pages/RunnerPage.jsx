@@ -157,8 +157,13 @@ export default function RunnerPage() {
   )
   const loggedCount = loggedIds.length
 
-  const upcomingMeets = ALL_MEETS.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))
-  const pastMeets     = ALL_MEETS.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))
+  const varsityMeets  = ALL_MEETS.filter((m) => m.level === 'Varsity')
+  const msMeets       = ALL_MEETS.filter((m) => m.level === 'MS')
+
+  const upcomingVarsity = varsityMeets.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+  const pastVarsity     = varsityMeets.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))
+  const upcomingMS      = msMeets.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))
+  const pastMS          = msMeets.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))
 
   const weekLabel = weekOffset === 0 ? 'This Week'
     : weekOffset === -1 ? 'Last Week'
@@ -190,14 +195,14 @@ export default function RunnerPage() {
       {/* ── Header ── */}
       <header className="bg-gradient-to-br from-rose-100 via-pink-50 to-violet-100 border-b border-rose-200">
         {/* School bar */}
-        <div className="border-b border-rose-200/60 px-4 py-3 flex items-center gap-3">
+        <div className="border-b border-rose-200/60 px-4 py-3 flex items-center justify-center gap-3">
           <img
             src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
             alt="Episcopal Academy"
             className="w-8 h-8 object-contain flex-shrink-0"
             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
           />
-          <div style={{ display: 'none' }} className="w-8 h-8 bg-rose-200 flex items-center justify-center flex-shrink-0">
+          <div style={{ display: 'none' }} className="w-8 h-8 bg-rose-200 rounded-lg flex items-center justify-center flex-shrink-0">
             <span className="text-rose-700 font-black text-xs">EA</span>
           </div>
           <div className="flex items-center gap-2">
@@ -208,23 +213,21 @@ export default function RunnerPage() {
         </div>
 
         {/* Runner hero */}
-        <div className="px-4 py-5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-rose-300 flex items-center justify-center text-rose-900 font-black text-lg flex-shrink-0">
-              {getInitials(runnerName) || '🏃'}
-            </div>
-            <div>
-              <p className="text-xs text-rose-400 uppercase tracking-widest font-semibold">Athlete</p>
-              <h1 className="text-2xl font-black text-rose-900 leading-tight">{runnerName || 'Runner'}</h1>
-            </div>
+        <div className="px-4 py-6 flex flex-col items-center gap-3">
+          <div className="w-14 h-14 bg-rose-300 rounded-2xl flex items-center justify-center text-rose-900 font-black text-xl flex-shrink-0">
+            {getInitials(runnerName) || '🏃'}
           </div>
-          <div className="flex gap-4 text-right">
-            <div>
+          <div className="text-center">
+            <p className="text-xs text-rose-400 uppercase tracking-widest font-semibold">Athlete</p>
+            <h1 className="text-2xl font-black text-rose-900 leading-tight">{runnerName || 'Runner'}</h1>
+          </div>
+          <div className="flex gap-6 mt-1">
+            <div className="text-center">
               <p className="text-2xl font-black text-rose-500 leading-none">{upcomingCount}</p>
               <p className="text-xs text-rose-400 uppercase tracking-wide mt-0.5">Upcoming</p>
             </div>
             <div className="w-px bg-rose-200 self-stretch" />
-            <div>
+            <div className="text-center">
               <p className="text-2xl font-black text-emerald-500 leading-none">{loggedCount}</p>
               <p className="text-xs text-rose-400 uppercase tracking-wide mt-0.5">Logged</p>
             </div>
@@ -260,7 +263,7 @@ export default function RunnerPage() {
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => setWeekOffset((o) => o - 1)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-500 border border-rose-200 bg-white hover:bg-rose-50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-500 border border-rose-200 bg-white hover:bg-rose-50 transition-colors rounded-lg"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -279,14 +282,14 @@ export default function RunnerPage() {
               {weekOffset !== 0 && (
                 <button
                   onClick={() => setWeekOffset(0)}
-                  className="px-3 py-2 text-xs font-bold text-rose-600 border border-rose-300 bg-rose-100 hover:bg-rose-200 transition-colors uppercase tracking-wide"
+                  className="px-3 py-2 text-xs font-bold text-rose-600 border border-rose-300 bg-rose-100 hover:bg-rose-200 transition-colors uppercase tracking-wide rounded-lg"
                 >
                   Today
                 </button>
               )}
               <button
                 onClick={() => setWeekOffset((o) => o + 1)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-500 border border-rose-200 bg-white hover:bg-rose-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-500 border border-rose-200 bg-white hover:bg-rose-50 transition-colors rounded-lg"
               >
                 Next
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -297,7 +300,7 @@ export default function RunnerPage() {
           </div>
 
           {/* Week grid */}
-          <div className="bg-white border border-rose-100 overflow-hidden shadow-sm">
+          <div className="bg-white border border-rose-100 overflow-hidden shadow-sm rounded-xl">
             <div className="overflow-x-auto">
               <div className="grid grid-cols-7 min-w-[640px]">
 
@@ -347,7 +350,7 @@ export default function RunnerPage() {
                         {dayMeets.map((meet) => (
                           <div
                             key={meet.id}
-                            className={`border-l-2 pl-2 pr-1 py-1 text-xs ${
+                            className={`border-l-2 pl-2 pr-1 py-1 text-xs rounded-r-lg ${
                               meet.championship
                                 ? 'border-amber-400 bg-amber-50'
                                 : 'border-rose-400 bg-rose-50'
@@ -375,31 +378,31 @@ export default function RunnerPage() {
                             </div>
 
                             {a.warmup && (
-                              <div className="border-l-2 border-green-400 pl-2 py-0.5 bg-green-50">
+                              <div className="border-l-2 border-green-400 pl-2 py-0.5 bg-green-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-green-700">Warm-Up</p>
                                 <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.warmup}</p>
                               </div>
                             )}
                             {a.mainWorkout && (
-                              <div className="border-l-2 border-rose-500 pl-2 py-0.5 bg-rose-50">
+                              <div className="border-l-2 border-rose-500 pl-2 py-0.5 bg-rose-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-rose-700">Main</p>
                                 <p className="text-xs text-gray-700 leading-snug line-clamp-3">{a.mainWorkout}</p>
                               </div>
                             )}
                             {a.cooldown && (
-                              <div className="border-l-2 border-sky-400 pl-2 py-0.5 bg-sky-50">
+                              <div className="border-l-2 border-sky-400 pl-2 py-0.5 bg-sky-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-sky-700">Cool-Down</p>
                                 <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.cooldown}</p>
                               </div>
                             )}
                             {ctToText(a.crossTraining) && (
-                              <div className="border-l-2 border-teal-400 pl-2 py-0.5 bg-teal-50">
+                              <div className="border-l-2 border-teal-400 pl-2 py-0.5 bg-teal-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-teal-700">Cross</p>
                                 <p className="text-xs text-gray-600 leading-snug">{ctToText(a.crossTraining)}</p>
                               </div>
                             )}
                             {a.notes && (
-                              <div className="border-l-2 border-amber-400 pl-2 py-0.5 bg-amber-50">
+                              <div className="border-l-2 border-amber-400 pl-2 py-0.5 bg-amber-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-amber-700">Notes</p>
                                 <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.notes}</p>
                               </div>
@@ -410,7 +413,7 @@ export default function RunnerPage() {
 
                             {/* Partners */}
                             {(peersByDate[dateStr] || []).length > 0 && (
-                              <div className="border border-violet-100 bg-violet-50 p-1.5">
+                              <div className="border border-violet-100 bg-violet-50 p-1.5 rounded-lg">
                                 <p className="text-xs font-bold text-violet-500 mb-0.5">Partners</p>
                                 {peersByDate[dateStr].map((p) => (
                                   <p key={p.id} className="text-xs text-violet-700 truncate font-medium">{p.runnerName}</p>
@@ -425,7 +428,7 @@ export default function RunnerPage() {
                               ) : (
                                 <button
                                   onClick={() => setLogOpenDate(dateStr)}
-                                  className="w-full text-xs bg-emerald-400 hover:bg-emerald-500 text-white py-1.5 font-bold transition-colors uppercase tracking-wide"
+                                  className="w-full text-xs bg-emerald-400 hover:bg-emerald-500 text-white py-1.5 font-bold transition-colors uppercase tracking-wide rounded-lg"
                                 >
                                   Log Activity
                                 </button>
@@ -451,36 +454,88 @@ export default function RunnerPage() {
 
       {/* ── Tab: Meets ── */}
       {activeTab === 'meets' && (
-        <div className="max-w-3xl mx-auto px-4 py-6">
-          <h2 className="text-xs font-black uppercase tracking-widest text-rose-400 mb-4">Season Meet Schedule</h2>
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <h2 className="text-xs font-black uppercase tracking-widest text-rose-400 mb-5">Season Meet Schedule</h2>
 
-          {upcomingMeets.length > 0 && (
-            <div className="mb-6">
-              <p className="text-xs font-bold text-rose-500 uppercase tracking-widest mb-2">Upcoming</p>
-              <div className="divide-y divide-rose-100 border border-rose-100 bg-white">
-                {upcomingMeets.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
-              </div>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-5">
 
-          {pastMeets.length > 0 && (
+            {/* Varsity column */}
             <div>
-              <button
-                onClick={() => setShowPastMeets((v) => !v)}
-                className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 hover:text-gray-600 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                Completed ({pastMeets.length})
-              </button>
-              {showPastMeets && (
-                <div className="divide-y divide-rose-100 border border-rose-100 bg-white opacity-60">
-                  {pastMeets.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b-2 border-rose-300">
+                <span className="text-sm">🏟️</span>
+                <p className="text-sm font-black text-rose-800">Girls Varsity</p>
+                <span className="ml-auto text-xs text-rose-300 font-medium">{upcomingVarsity.length} left</span>
+              </div>
+
+              {upcomingVarsity.length > 0 && (
+                <div className="mb-3 divide-y divide-rose-100 border border-rose-100 rounded-xl overflow-hidden bg-white">
+                  {upcomingVarsity.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
                 </div>
               )}
+
+              {pastVarsity.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setShowPastMeets((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 hover:text-gray-600 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Past ({pastVarsity.length})
+                  </button>
+                  {showPastMeets && (
+                    <div className="divide-y divide-rose-100 border border-rose-100 rounded-xl overflow-hidden bg-white opacity-60">
+                      {pastVarsity.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {upcomingVarsity.length === 0 && pastVarsity.length === 0 && (
+                <p className="text-xs text-rose-300 italic">No varsity meets.</p>
+              )}
             </div>
-          )}
+
+            {/* MS column */}
+            <div>
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b-2 border-violet-300">
+                <span className="text-sm">🏃</span>
+                <p className="text-sm font-black text-violet-800">Middle School</p>
+                <span className="ml-auto text-xs text-violet-300 font-medium">{upcomingMS.length} left</span>
+              </div>
+
+              {upcomingMS.length > 0 && (
+                <div className="mb-3 divide-y divide-violet-100 border border-violet-100 rounded-xl overflow-hidden bg-white">
+                  {upcomingMS.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
+                </div>
+              )}
+
+              {pastMS.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setShowPastMeets((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 hover:text-gray-600 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${showPastMeets ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Past ({pastMS.length})
+                  </button>
+                  {showPastMeets && (
+                    <div className="divide-y divide-violet-100 border border-violet-100 rounded-xl overflow-hidden bg-white opacity-60">
+                      {pastMS.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {upcomingMS.length === 0 && pastMS.length === 0 && (
+                <p className="text-xs text-violet-300 italic">No MS meets.</p>
+              )}
+            </div>
+
+          </div>
         </div>
       )}
 
