@@ -167,85 +167,85 @@ export default function RunnerPage() {
     : `${Math.abs(weekOffset)} Weeks Ago`
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="min-h-screen bg-pink-50 flex items-center justify-center">
       <div className="text-center">
-        <div className="w-10 h-10 border-4 border-rose-200 border-t-rose-500 rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-gray-500 text-sm">Loading your schedule…</p>
+        <div className="w-10 h-10 border-4 border-rose-200 border-t-rose-400 rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-rose-400 text-sm">Loading your schedule…</p>
       </div>
     </div>
   )
 
   if (error) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-pink-50 flex items-center justify-center p-6">
       <div className="text-center">
         <span className="text-5xl">🤔</span>
-        <p className="mt-4 text-gray-500">{error}</p>
+        <p className="mt-4 text-rose-400">{error}</p>
       </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-pink-50">
 
       {/* ── Header ── */}
-      <header className="bg-gray-950 text-white">
+      <header className="bg-gradient-to-br from-rose-100 via-pink-50 to-violet-100 border-b border-rose-200">
         {/* School bar */}
-        <div className="border-b border-white/10 px-4 py-3 flex items-center gap-3">
+        <div className="border-b border-rose-200/60 px-4 py-3 flex items-center gap-3">
           <img
             src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
             alt="Episcopal Academy"
             className="w-8 h-8 object-contain flex-shrink-0"
             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
           />
-          <div style={{ display: 'none' }} className="w-8 h-8 bg-white flex items-center justify-center flex-shrink-0">
-            <span className="text-gray-900 font-black text-xs">EA</span>
+          <div style={{ display: 'none' }} className="w-8 h-8 bg-rose-200 flex items-center justify-center flex-shrink-0">
+            <span className="text-rose-700 font-black text-xs">EA</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-white/50 uppercase tracking-widest">Episcopal Academy</span>
-            <span className="text-white/20">·</span>
-            <span className="text-xs font-semibold text-rose-400 uppercase tracking-widest">Women's XC & Track</span>
+            <span className="text-xs font-semibold text-rose-400 uppercase tracking-widest">Episcopal Academy</span>
+            <span className="text-rose-200">·</span>
+            <span className="text-xs font-semibold text-violet-500 uppercase tracking-widest">Women's XC & Track</span>
           </div>
         </div>
 
         {/* Runner hero */}
         <div className="px-4 py-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-rose-500 flex items-center justify-center text-white font-black text-lg flex-shrink-0">
+            <div className="w-12 h-12 bg-rose-300 flex items-center justify-center text-rose-900 font-black text-lg flex-shrink-0">
               {getInitials(runnerName) || '🏃'}
             </div>
             <div>
-              <p className="text-xs text-white/40 uppercase tracking-widest font-semibold">Athlete</p>
-              <h1 className="text-2xl font-black text-white leading-tight">{runnerName || 'Runner'}</h1>
+              <p className="text-xs text-rose-400 uppercase tracking-widest font-semibold">Athlete</p>
+              <h1 className="text-2xl font-black text-rose-900 leading-tight">{runnerName || 'Runner'}</h1>
             </div>
           </div>
           <div className="flex gap-4 text-right">
             <div>
-              <p className="text-2xl font-black text-rose-400 leading-none">{upcomingCount}</p>
-              <p className="text-xs text-white/40 uppercase tracking-wide mt-0.5">Upcoming</p>
+              <p className="text-2xl font-black text-rose-500 leading-none">{upcomingCount}</p>
+              <p className="text-xs text-rose-400 uppercase tracking-wide mt-0.5">Upcoming</p>
             </div>
-            <div className="w-px bg-white/10 self-stretch" />
+            <div className="w-px bg-rose-200 self-stretch" />
             <div>
-              <p className="text-2xl font-black text-emerald-400 leading-none">{loggedCount}</p>
-              <p className="text-xs text-white/40 uppercase tracking-wide mt-0.5">Logged</p>
+              <p className="text-2xl font-black text-emerald-500 leading-none">{loggedCount}</p>
+              <p className="text-xs text-rose-400 uppercase tracking-wide mt-0.5">Logged</p>
             </div>
           </div>
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-t border-white/10">
+        <div className="flex border-t border-rose-200/60 bg-white/50">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 py-3 text-sm font-semibold transition-colors relative ${
                 activeTab === tab.id
-                  ? 'text-white'
-                  : 'text-white/40 hover:text-white/70'
+                  ? 'text-rose-700'
+                  : 'text-rose-300 hover:text-rose-500'
               }`}
             >
               {tab.label}
               {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-500" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-rose-400" />
               )}
             </button>
           ))}
@@ -260,7 +260,7 @@ export default function RunnerPage() {
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => setWeekOffset((o) => o - 1)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-500 border border-rose-200 bg-white hover:bg-rose-50 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -269,8 +269,8 @@ export default function RunnerPage() {
             </button>
 
             <div className="text-center">
-              <p className="text-sm font-black text-gray-900 uppercase tracking-wide">{weekLabel}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-sm font-black text-rose-800 uppercase tracking-wide">{weekLabel}</p>
+              <p className="text-xs text-rose-400 mt-0.5">
                 {format(parseISO(currentDays[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(currentDays[6] + 'T12:00:00'), 'MMM d, yyyy')}
               </p>
             </div>
@@ -279,14 +279,14 @@ export default function RunnerPage() {
               {weekOffset !== 0 && (
                 <button
                   onClick={() => setWeekOffset(0)}
-                  className="px-3 py-2 text-xs font-bold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 transition-colors uppercase tracking-wide"
+                  className="px-3 py-2 text-xs font-bold text-rose-600 border border-rose-300 bg-rose-100 hover:bg-rose-200 transition-colors uppercase tracking-wide"
                 >
                   Today
                 </button>
               )}
               <button
                 onClick={() => setWeekOffset((o) => o + 1)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-500 border border-rose-200 bg-white hover:bg-rose-50 transition-colors"
               >
                 Next
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -297,7 +297,7 @@ export default function RunnerPage() {
           </div>
 
           {/* Week grid */}
-          <div className="bg-white border border-gray-200 overflow-hidden">
+          <div className="bg-white border border-rose-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <div className="grid grid-cols-7 min-w-[640px]">
 
@@ -310,17 +310,17 @@ export default function RunnerPage() {
                   return (
                     <div
                       key={dateStr}
-                      className={`text-center py-2.5 px-1 border-r border-gray-100 last:border-r-0 border-b ${
-                        isToday ? 'bg-rose-600 text-white' : isPast ? 'bg-gray-50 text-gray-400' : 'bg-white text-gray-700'
+                      className={`text-center py-2.5 px-1 border-r border-rose-100 last:border-r-0 border-b ${
+                        isToday ? 'bg-rose-200 text-rose-900' : isPast ? 'bg-rose-50/50 text-rose-300' : 'bg-white text-rose-700'
                       }`}
                     >
-                      <p className={`text-xs font-bold uppercase tracking-wider ${isToday ? 'text-rose-100' : 'opacity-60'}`}>
+                      <p className={`text-xs font-bold uppercase tracking-wider ${isToday ? 'text-rose-600' : 'opacity-60'}`}>
                         {format(d, 'EEE')}
                       </p>
                       <p className="text-xl font-black leading-none mt-0.5">{format(d, 'd')}</p>
-                      <p className={`text-xs mt-0.5 ${isToday ? 'text-rose-100' : 'opacity-50'}`}>{format(d, 'MMM')}</p>
+                      <p className={`text-xs mt-0.5 ${isToday ? 'text-rose-500' : 'opacity-50'}`}>{format(d, 'MMM')}</p>
                       {hasMeet && (
-                        <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${isToday ? 'bg-rose-200' : 'bg-rose-500'}`} />
+                        <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${isToday ? 'bg-rose-500' : 'bg-violet-400'}`} />
                       )}
                     </div>
                   )
@@ -337,8 +337,8 @@ export default function RunnerPage() {
                   return (
                     <div
                       key={dateStr}
-                      className={`border-r border-gray-100 last:border-r-0 min-h-[160px] flex flex-col ${
-                        isToday ? 'bg-rose-50/30' : isPast ? 'bg-gray-50/50' : 'bg-white'
+                      className={`border-r border-rose-100 last:border-r-0 min-h-[160px] flex flex-col ${
+                        isToday ? 'bg-rose-50/40' : isPast ? 'bg-rose-50/20' : 'bg-white'
                       }`}
                     >
                       <div className="flex-1 flex flex-col p-2 gap-1.5">
@@ -362,15 +362,15 @@ export default function RunnerPage() {
 
                         {a ? (
                           <>
-                            {/* Status badge */}
+                            {/* Status indicator */}
                             <div className="flex justify-center">
                               {isLogged
-                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5">✓ Logged</span>
+                                ? <span className="text-xs text-emerald-500 font-semibold italic">✓ Logged</span>
                                 : isPast
-                                  ? <span className="text-xs bg-gray-100 text-gray-400 font-bold px-2 py-0.5">Past</span>
+                                  ? <span className="text-xs text-rose-300 font-semibold italic">Past</span>
                                   : isToday
-                                    ? <span className="text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5">Today</span>
-                                    : <span className="text-xs bg-violet-100 text-violet-700 font-bold px-2 py-0.5">Upcoming</span>
+                                    ? <span className="text-xs text-rose-600 font-semibold italic">Today</span>
+                                    : <span className="text-xs text-violet-400 font-semibold italic">Upcoming</span>
                               }
                             </div>
 
@@ -425,7 +425,7 @@ export default function RunnerPage() {
                               ) : (
                                 <button
                                   onClick={() => setLogOpenDate(dateStr)}
-                                  className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 font-bold transition-colors uppercase tracking-wide"
+                                  className="w-full text-xs bg-emerald-400 hover:bg-emerald-500 text-white py-1.5 font-bold transition-colors uppercase tracking-wide"
                                 >
                                   Log Activity
                                 </button>
@@ -452,12 +452,12 @@ export default function RunnerPage() {
       {/* ── Tab: Meets ── */}
       {activeTab === 'meets' && (
         <div className="max-w-3xl mx-auto px-4 py-6">
-          <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Season Meet Schedule</h2>
+          <h2 className="text-xs font-black uppercase tracking-widest text-rose-400 mb-4">Season Meet Schedule</h2>
 
           {upcomingMeets.length > 0 && (
             <div className="mb-6">
-              <p className="text-xs font-bold text-rose-600 uppercase tracking-widest mb-2">Upcoming</p>
-              <div className="divide-y divide-gray-100 border border-gray-200 bg-white">
+              <p className="text-xs font-bold text-rose-500 uppercase tracking-widest mb-2">Upcoming</p>
+              <div className="divide-y divide-rose-100 border border-rose-100 bg-white">
                 {upcomingMeets.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
               </div>
             </div>
@@ -475,7 +475,7 @@ export default function RunnerPage() {
                 Completed ({pastMeets.length})
               </button>
               {showPastMeets && (
-                <div className="divide-y divide-gray-100 border border-gray-200 bg-white opacity-60">
+                <div className="divide-y divide-rose-100 border border-rose-100 bg-white opacity-60">
                   {pastMeets.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
                 </div>
               )}
@@ -498,7 +498,7 @@ export default function RunnerPage() {
         </div>
       )}
 
-      <p className="text-center text-gray-300 text-xs py-8">
+      <p className="text-center text-rose-300 text-xs py-8">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
 
@@ -537,10 +537,10 @@ function MeetRow({ meet }) {
         <p className="text-xs text-gray-400 truncate">{meet.location}</p>
       </div>
       <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        <span className={`text-xs font-bold px-2 py-0.5 ${meet.level === 'MS' ? 'bg-violet-100 text-violet-700' : 'bg-rose-100 text-rose-700'}`}>
+        <span className={`text-xs font-semibold italic ${meet.level === 'MS' ? 'text-violet-500' : 'text-rose-500'}`}>
           {meet.level === 'MS' ? 'MS' : 'Varsity'}
         </span>
-        <span className={`text-xs font-bold px-2 py-0.5 ${meet.home ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
+        <span className={`text-xs font-semibold italic ${meet.home ? 'text-emerald-500' : 'text-gray-400'}`}>
           {meet.home ? 'Home' : 'Away'}
         </span>
       </div>
@@ -552,16 +552,16 @@ function MeetRow({ meet }) {
 
 function LogSummary({ assignmentId }) {
   const log = getStoredLog(assignmentId)
-  if (!log) return <p className="text-xs text-emerald-600 font-bold text-center py-1 uppercase tracking-wide">✓ Logged</p>
+  if (!log) return <p className="text-xs text-emerald-500 font-semibold italic text-center py-1">✓ Logged</p>
   return (
-    <div className="border border-emerald-200 bg-emerald-50 p-2 space-y-1">
-      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">✓ Logged</p>
-      {log.actualActivity && <p className="text-xs text-gray-600 line-clamp-2">{log.actualActivity}</p>}
+    <div className="border-t border-emerald-100 pt-2 space-y-0.5">
+      <p className="text-xs font-semibold text-emerald-500 italic">✓ Logged</p>
+      {log.actualActivity && <p className="text-xs text-rose-500 line-clamp-2 italic">{log.actualActivity}</p>}
       <div className="flex gap-2 flex-wrap">
-        {log.distance    && <span className="text-xs text-gray-500 font-medium">{log.distance}</span>}
-        {log.avgPace     && <span className="text-xs text-gray-500 font-medium">@ {log.avgPace}</span>}
-        {log.avgHeartRate && <span className="text-xs text-gray-500 font-medium">♥ {log.avgHeartRate}</span>}
-        {log.rpe         && <span className="text-xs text-rose-600 font-bold">RPE {log.rpe}</span>}
+        {log.distance     && <span className="text-xs text-rose-400">{log.distance}</span>}
+        {log.avgPace      && <span className="text-xs text-rose-400">@ {log.avgPace}</span>}
+        {log.avgHeartRate && <span className="text-xs text-rose-400">♥ {log.avgHeartRate}</span>}
+        {log.rpe          && <span className="text-xs text-violet-500 font-semibold">RPE {log.rpe}</span>}
       </div>
     </div>
   )
@@ -575,12 +575,12 @@ function SwimSection() {
 
   return (
     <div>
-      <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Swim Workouts</h2>
+      <h2 className="text-xs font-black uppercase tracking-widest text-sky-400 mb-4">Swim Workouts</h2>
 
       <select
         value={selectedId || ''}
         onChange={(e) => setSelectedId(e.target.value || null)}
-        className="w-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-400 mb-3"
+        className="w-full border border-sky-200 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sky-300 mb-3 text-sky-800"
       >
         <option value="">— Select a swim workout —</option>
         {SWIM_WORKOUTS.map((w) => (
@@ -595,8 +595,8 @@ function SwimSection() {
             onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
             className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border transition-colors ${
               selectedId === w.id
-                ? 'bg-rose-600 text-white border-rose-600'
-                : 'bg-white text-gray-600 border-gray-300 hover:border-rose-400 hover:text-rose-600'
+                ? 'bg-sky-300 text-sky-900 border-sky-300'
+                : 'bg-white text-sky-500 border-sky-200 hover:bg-sky-50'
             }`}
           >
             {w.type}
@@ -605,17 +605,17 @@ function SwimSection() {
       </div>
 
       {workout && (
-        <div className="border border-gray-200 bg-white overflow-hidden">
-          <div className="bg-gray-950 text-white px-5 py-4 flex items-center justify-between">
+        <div className="border border-sky-100 bg-white overflow-hidden">
+          <div className="bg-gradient-to-r from-sky-100 to-violet-100 px-5 py-4 flex items-center justify-between border-b border-sky-200">
             <div>
-              <p className="font-black text-base">{workout.title}</p>
-              <p className="text-white/50 text-xs mt-0.5">{workout.subtitle}</p>
+              <p className="font-black text-base text-sky-900">{workout.title}</p>
+              <p className="text-sky-500 text-xs mt-0.5">{workout.subtitle}</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-black text-rose-400">
+              <p className="text-2xl font-black text-sky-600">
                 {workout.sets.reduce((s, x) => s + (x.yards || 0), 0).toLocaleString()}
               </p>
-              <p className="text-white/40 text-xs uppercase tracking-wide">yards</p>
+              <p className="text-sky-400 text-xs uppercase tracking-wide">yards</p>
             </div>
           </div>
           {workout.note && (
@@ -653,12 +653,12 @@ function StrengthSection() {
 
   return (
     <div>
-      <h2 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Strength Workouts</h2>
+      <h2 className="text-xs font-black uppercase tracking-widest text-violet-400 mb-4">Strength Workouts</h2>
 
       <select
         value={selectedId || ''}
         onChange={(e) => setSelectedId(e.target.value || null)}
-        className="w-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-400 mb-3"
+        className="w-full border border-violet-200 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 mb-3 text-violet-800"
       >
         <option value="">— Select a strength workout —</option>
         {STRENGTH_WORKOUTS.map((w) => (
@@ -673,8 +673,8 @@ function StrengthSection() {
             onClick={() => setSelectedId(w.id === selectedId ? null : w.id)}
             className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border transition-colors ${
               selectedId === w.id
-                ? 'bg-rose-600 text-white border-rose-600'
-                : 'bg-white text-gray-600 border-gray-300 hover:border-rose-400 hover:text-rose-600'
+                ? 'bg-violet-200 text-violet-900 border-violet-200'
+                : 'bg-white text-violet-500 border-violet-200 hover:bg-violet-50'
             }`}
           >
             {w.title}
@@ -683,15 +683,15 @@ function StrengthSection() {
       </div>
 
       {workout && (
-        <div className="border border-gray-200 bg-white overflow-hidden">
-          <div className="bg-gray-950 text-white px-5 py-4 flex items-center justify-between">
+        <div className="border border-violet-100 bg-white overflow-hidden">
+          <div className="bg-gradient-to-r from-violet-100 to-rose-100 px-5 py-4 flex items-center justify-between border-b border-violet-200">
             <div>
-              <p className="font-black text-base">{workout.title}</p>
-              <p className="text-rose-400 text-xs font-bold uppercase tracking-wide mt-0.5">{workout.type}</p>
+              <p className="font-black text-base text-violet-900">{workout.title}</p>
+              <p className="text-violet-500 text-xs font-bold uppercase tracking-wide mt-0.5">{workout.type}</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-black text-rose-400">{workout.exercises.length}</p>
-              <p className="text-white/40 text-xs uppercase tracking-wide">exercises</p>
+              <p className="text-2xl font-black text-violet-600">{workout.exercises.length}</p>
+              <p className="text-violet-400 text-xs uppercase tracking-wide">exercises</p>
             </div>
           </div>
           {workout.note && (
@@ -776,20 +776,20 @@ function LogModal({ assignment, onLogged, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60">
-      <div className="w-full max-w-xl bg-white flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-rose-900/30">
+      <div className="w-full max-w-xl bg-pink-50 flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="bg-gray-950 text-white px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <div className="bg-gradient-to-r from-rose-200 via-pink-100 to-violet-200 px-6 py-4 flex items-center justify-between flex-shrink-0 border-b border-rose-200">
           <div>
-            <p className="font-black text-lg">Log Your Workout</p>
+            <p className="font-black text-lg text-rose-900">Log Your Workout</p>
             {assignment.date && (
-              <p className="text-rose-400 text-xs font-semibold mt-0.5">
+              <p className="text-rose-500 text-xs font-semibold mt-0.5">
                 {format(parseISO(assignment.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
               </p>
             )}
           </div>
-          <button onClick={onCancel} className="text-white/40 hover:text-white transition-colors">
+          <button onClick={onCancel} className="text-rose-400 hover:text-rose-700 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -799,15 +799,15 @@ function LogModal({ assignment, onLogged, onCancel }) {
         {/* Assigned workout quick-ref */}
         {(assignment.mainWorkout || assignment.warmup) && (
           <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 flex-shrink-0">
-            <p className="text-xs font-black text-rose-600 uppercase tracking-widest mb-1">Assigned</p>
-            {assignment.warmup      && <p className="text-xs text-gray-600">Warm-Up: {assignment.warmup}</p>}
-            {assignment.mainWorkout && <p className="text-xs font-semibold text-gray-800">Main: {assignment.mainWorkout}</p>}
-            {assignment.cooldown    && <p className="text-xs text-gray-600">Cool-Down: {assignment.cooldown}</p>}
+            <p className="text-xs font-black text-rose-400 uppercase tracking-widest mb-1">Assigned Workout</p>
+            {assignment.warmup      && <p className="text-xs text-rose-600">Warm-Up: {assignment.warmup}</p>}
+            {assignment.mainWorkout && <p className="text-xs font-semibold text-rose-800">Main: {assignment.mainWorkout}</p>}
+            {assignment.cooldown    && <p className="text-xs text-rose-600">Cool-Down: {assignment.cooldown}</p>}
           </div>
         )}
 
         {/* Scrollable form */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-white">
 
           <div>
             <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-1.5">What did you do? *</label>
@@ -879,8 +879,8 @@ function LogModal({ assignment, onLogged, onCancel }) {
                 <button key={n} type="button" onClick={() => set('rpe', n === form.rpe ? '' : n)}
                   className={`w-9 h-9 text-sm font-black transition-colors border ${
                     form.rpe === n
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-white border-gray-300 text-gray-500 hover:border-rose-400'
+                      ? 'bg-rose-300 text-rose-900 border-rose-300'
+                      : 'bg-white border-rose-200 text-rose-400 hover:bg-rose-50'
                   }`}
                 >{n}</button>
               ))}
@@ -900,14 +900,14 @@ function LogModal({ assignment, onLogged, onCancel }) {
         </div>
 
         {/* Actions */}
-        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 flex-shrink-0">
+        <div className="px-6 py-4 border-t border-rose-100 flex gap-3 flex-shrink-0 bg-pink-50">
           <button type="button" onClick={onCancel}
-            className="flex-1 border border-gray-300 text-gray-700 py-2.5 text-sm font-black uppercase tracking-wide hover:bg-gray-50 transition-colors"
+            className="flex-1 border border-rose-200 text-rose-500 py-2.5 text-sm font-black uppercase tracking-wide hover:bg-rose-50 transition-colors"
           >
             Cancel
           </button>
           <button type="button" onClick={handleSubmit} disabled={saving}
-            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-2.5 text-sm font-black uppercase tracking-wide disabled:opacity-50 transition-colors"
+            className="flex-1 bg-rose-400 hover:bg-rose-500 text-white py-2.5 text-sm font-black uppercase tracking-wide disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving…' : 'Submit Log'}
           </button>
