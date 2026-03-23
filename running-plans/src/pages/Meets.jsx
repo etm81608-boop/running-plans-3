@@ -37,21 +37,85 @@ const MS_MEETS = [
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function Meets() {
-  const [tab, setTab] = useState('varsity')
-  const meets = tab === 'varsity' ? VARSITY_MEETS : MS_MEETS
-  const label = tab === 'varsity' ? 'Girls Varsity Track & Field' : 'Middle School Track'
+function MeetColumn({ title, emoji, accentClass, meets }) {
+  const [showPast, setShowPast] = useState(false)
 
-  const { upcoming, past } = useMemo(() => {
-    const upcoming = meets.filter((m) => !isPast(parseISO(m.date + 'T23:59:59')))
-    const past     = [...meets.filter((m) => isPast(parseISO(m.date + 'T23:59:59')))].reverse()
-    return { upcoming, past }
-  }, [meets])
-
+  const upcoming = useMemo(
+    () => meets.filter((m) => !isPast(parseISO(m.date + 'T23:59:59'))),
+    [meets]
+  )
+  const past = useMemo(
+    () => [...meets.filter((m) => isPast(parseISO(m.date + 'T23:59:59')))].reverse(),
+    [meets]
+  )
   const nextMeet = upcoming[0] || null
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div>
+      {/* Column header */}
+      <div className={`flex items-center gap-2 mb-4 pb-2 border-b-2 ${accentClass}`}>
+        <span className="text-base">{emoji}</span>
+        <h2 className="text-base font-black text-gray-900">{title}</h2>
+        <span className="ml-auto text-xs text-gray-400 font-medium">{upcoming.length} remaining</span>
+      </div>
+
+      {/* Next meet mini-banner */}
+      {nextMeet && (
+        <div className="mb-4 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
+          <p className="text-brand-400 text-xs font-semibold uppercase tracking-widest mb-0.5">Next Up</p>
+          <p className="font-bold text-gray-900 text-sm leading-tight">{nextMeet.name}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            📅 {format(parseISO(nextMeet.date + 'T12:00:00'), 'EEE, MMM d')}
+            {nextMeet.time && <span> · 🕐 {nextMeet.time}</span>}
+          </p>
+          <p className="text-xs text-gray-500">📍 {nextMeet.location}</p>
+        </div>
+      )}
+
+      {/* Upcoming meets */}
+      {upcoming.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Upcoming</p>
+          <div className="space-y-2">
+            {upcoming.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Past meets (collapsible) */}
+      {past.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowPast((v) => !v)}
+            className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 hover:text-gray-600 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className={`h-3 w-3 transition-transform ${showPast ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            Completed ({past.length})
+          </button>
+          {showPast && (
+            <div className="space-y-2 opacity-60">
+              {past.map((meet) => <MeetRow key={meet.id} meet={meet} past />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {upcoming.length === 0 && past.length === 0 && (
+        <p className="text-xs text-gray-400 italic">No meets scheduled.</p>
+      )}
+    </div>
+  )
+}
+
+export default function Meets() {
+  return (
+    <div className="p-8 max-w-6xl">
 
       {/* Header */}
       <div className="mb-6">
@@ -59,83 +123,21 @@ export default function Meets() {
         <p className="text-sm text-gray-500 mt-0.5">Episcopal Academy · Spring 2026</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setTab('varsity')}
-          className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${
-            tab === 'varsity'
-              ? 'bg-brand-600 text-white shadow-sm'
-              : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          🏟️ Girls Varsity
-        </button>
-        <button
-          onClick={() => setTab('ms')}
-          className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${
-            tab === 'ms'
-              ? 'bg-brand-600 text-white shadow-sm'
-              : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          🏃 Middle School
-        </button>
+      {/* Two-column layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <MeetColumn
+          title="Girls Varsity Track & Field"
+          emoji="🏟️"
+          accentClass="border-brand-400"
+          meets={VARSITY_MEETS}
+        />
+        <MeetColumn
+          title="Middle School Track"
+          emoji="🏃"
+          accentClass="border-emerald-400"
+          meets={MS_MEETS}
+        />
       </div>
-
-      {/* Next meet banner */}
-      {nextMeet && (
-        <div className="mb-6 bg-brand-600 text-white rounded-2xl px-6 py-5">
-          <p className="text-brand-200 text-xs font-semibold uppercase tracking-widest mb-1">
-            Next Meet — {label}
-          </p>
-          <p className="text-xl font-black">{nextMeet.name}</p>
-          <div className="flex flex-wrap gap-4 mt-2 text-sm text-brand-100">
-            <span>📅 {format(parseISO(nextMeet.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}</span>
-            {nextMeet.time && <span>🕐 {nextMeet.time}</span>}
-            <span>📍 {nextMeet.location}</span>
-            <span>{nextMeet.home ? '🏠 Home' : '✈️ Away'}</span>
-          </div>
-          {nextMeet.opponents.length > 0 && (
-            <p className="text-brand-200 text-xs mt-2">vs. {nextMeet.opponents.join(', ')}</p>
-          )}
-        </div>
-      )}
-
-      {/* Stats row */}
-      <div className="flex gap-6 mb-6 text-sm text-gray-500">
-        <span><strong className="text-gray-900">{meets.length}</strong> total meets</span>
-        <span><strong className="text-brand-600">{upcoming.length}</strong> remaining</span>
-        <span><strong className="text-gray-400">{past.length}</strong> completed</span>
-        <span><strong className="text-emerald-600">{meets.filter((m) => m.home).length}</strong> home</span>
-        <span><strong className="text-amber-500">{meets.filter((m) => m.championship).length}</strong> championships</span>
-      </div>
-
-      {/* Upcoming */}
-      {upcoming.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Upcoming</h2>
-          <div className="space-y-2">
-            {upcoming.map((meet) => <MeetRow key={meet.id} meet={meet} />)}
-          </div>
-        </div>
-      )}
-
-      {/* Past */}
-      {past.length > 0 && (
-        <div>
-          <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">Completed</h2>
-          <div className="space-y-2 opacity-60">
-            {past.map((meet) => <MeetRow key={meet.id} meet={meet} past />)}
-          </div>
-        </div>
-      )}
-
-      {upcoming.length === 0 && past.length === 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400">
-          No meets scheduled.
-        </div>
-      )}
     </div>
   )
 }
