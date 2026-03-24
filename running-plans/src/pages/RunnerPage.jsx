@@ -536,7 +536,7 @@ export default function RunnerPage() {
                             {/* Log button */}
                             <div className="mt-auto pt-1">
                               {isLogged ? (
-                                <LogSummary assignmentId={a.id} />
+                                <LogSummary assignmentId={a.id} onEdit={() => setLogOpenDate(dateStr)} />
                               ) : (
                                 <button
                                   onClick={() => setLogOpenDate(dateStr)}
@@ -685,6 +685,7 @@ export default function RunnerPage() {
         return (
           <LogModal
             assignment={a}
+            existingLog={getStoredLog(a.id)}
             onLogged={() => { markLogged(a.id); setLogOpenDate(null) }}
             onCancel={() => setLogOpenDate(null)}
           />
@@ -726,12 +727,24 @@ function MeetRow({ meet }) {
 
 // ── Log Summary ───────────────────────────────────────────────────────────────
 
-function LogSummary({ assignmentId }) {
+function LogSummary({ assignmentId, onEdit }) {
   const log = getStoredLog(assignmentId)
-  if (!log) return <p className="text-xs text-emerald-500 font-semibold italic text-center py-1">✓ Logged</p>
+  if (!log) return (
+    <div className="text-center pt-1">
+      <p className="text-xs text-emerald-500 font-semibold italic">✓ Logged</p>
+      <button onClick={onEdit} className="text-xs text-rose-400 hover:text-rose-600 font-semibold underline mt-0.5 transition-colors">
+        Edit
+      </button>
+    </div>
+  )
   return (
     <div className="border-t border-emerald-100 pt-2 space-y-0.5">
-      <p className="text-xs font-semibold text-emerald-500 italic">✓ Logged</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-emerald-500 italic">✓ Logged</p>
+        <button onClick={onEdit} className="text-xs text-rose-400 hover:text-rose-600 font-semibold underline transition-colors">
+          ✏️ Edit
+        </button>
+      </div>
       {log.actualActivity && <p className="text-xs text-rose-500 line-clamp-2 italic">{log.actualActivity}</p>}
       <div className="flex gap-2 flex-wrap">
         {log.distance     && <span className="text-xs text-rose-400">{log.distance}</span>}
@@ -909,9 +922,22 @@ function StrengthSection() {
 
 // ── Log Modal (full-screen) ───────────────────────────────────────────────────
 
-function LogModal({ assignment, onLogged, onCancel }) {
+function LogModal({ assignment, existingLog, onLogged, onCancel }) {
   const EMPTY = { actualActivity: '', distance: '', duration: '', avgPace: '', avgHeartRate: '', rpe: '', notes: '', splits: [] }
-  const [form,   setForm]   = useState(EMPTY)
+  const [form,   setForm]   = useState(() => existingLog
+    ? {
+        actualActivity: existingLog.actualActivity || '',
+        distance:       existingLog.distance       || '',
+        duration:       existingLog.duration       || '',
+        avgPace:        existingLog.avgPace        || '',
+        avgHeartRate:   existingLog.avgHeartRate   || '',
+        rpe:            existingLog.rpe            || '',
+        notes:          existingLog.notes          || '',
+        splits:         existingLog.splits         || [],
+      }
+    : EMPTY
+  )
+  const isEditing = !!existingLog?.docId
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState(null)
 
@@ -934,16 +960,27 @@ function LogModal({ assignment, onLogged, onCancel }) {
       splits:         form.splits.filter(Boolean),
     }
     try {
-      await addDoc(collection(db, 'workoutLogs'), {
-        assignmentId: assignment.id,
-        runnerId:     assignment.runnerId   || '',
-        runnerName:   assignment.runnerName || '',
-        date:         assignment.date       || '',
-        ...logData,
-        rpe: logData.rpe ? parseInt(logData.rpe, 10) : null,
-        submittedAt: serverTimestamp(),
-      })
-      storeLog(assignment.id, logData)
+      if (existingLog?.docId) {
+        // ── Edit existing log ──
+        await updateDoc(doc(db, 'workoutLogs', existingLog.docId), {
+          ...logData,
+          rpe: logData.rpe ? parseInt(logData.rpe, 10) : null,
+          updatedAt: serverTimestamp(),
+        })
+        storeLog(assignment.id, { ...logData, docId: existingLog.docId })
+      } else {
+        // ── Create new log ──
+        const docRef = await addDoc(collection(db, 'workoutLogs'), {
+          assignmentId: assignment.id,
+          runnerId:     assignment.runnerId   || '',
+          runnerName:   assignment.runnerName || '',
+          date:         assignment.date       || '',
+          ...logData,
+          rpe: logData.rpe ? parseInt(logData.rpe, 10) : null,
+          submittedAt: serverTimestamp(),
+        })
+        storeLog(assignment.id, { ...logData, docId: docRef.id })
+      }
       onLogged()
     } catch {
       setError('Something went wrong. Try again.')
@@ -958,7 +995,7 @@ function LogModal({ assignment, onLogged, onCancel }) {
         {/* Header */}
         <div className="bg-gradient-to-r from-rose-200 via-pink-100 to-violet-200 px-6 py-4 flex items-center justify-between flex-shrink-0 border-b border-rose-200">
           <div>
-            <p className="font-black text-lg text-rose-900">Log Your Workout</p>
+            <p className="font-black text-lg text-rose-900">{isEditing ? 'Edit Your Log' : 'Log Your Workout'}</p>
             {assignment.date && (
               <p className="text-rose-500 text-xs font-semibold mt-0.5">
                 {format(parseISO(assignment.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
@@ -1085,7 +1122,7 @@ function LogModal({ assignment, onLogged, onCancel }) {
           <button type="button" onClick={handleSubmit} disabled={saving}
             className="flex-1 bg-rose-400 hover:bg-rose-500 text-white py-2.5 text-sm font-black uppercase tracking-wide disabled:opacity-50 transition-colors"
           >
-            {saving ? 'Saving…' : 'Submit Log'}
+            {saving ? 'Saving…' : isEditing ? 'Update Log' : 'Submit Log'}
           </button>
         </div>
       </div>
