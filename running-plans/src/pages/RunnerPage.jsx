@@ -8,6 +8,7 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'fire
 import { db } from '../firebase/config'
 import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 import { ctToText } from '../components/CrossTrainingInput'
+import useWeather from '../hooks/useWeather'
 import { SWIM_WORKOUTS }    from '../data/swimWorkouts'
 import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
 import { MOBILITY_WORKOUT }  from '../data/mobilityWorkout'
@@ -208,6 +209,7 @@ export default function RunnerPage() {
   const thisMonday   = getMondayOf(today)
   const currentMonday = shiftWeek(thisMonday, weekOffset)
   const currentDays   = weekDays(currentMonday)
+  const weatherByDate = useWeather(currentDays[0], currentDays[6])
 
   const upcomingCount = useMemo(
     () => assignments.filter((a) => a.date >= today).length,
@@ -438,6 +440,14 @@ export default function RunnerPage() {
                       <p className={`text-xs mt-0.5 ${isToday ? 'text-rose-500' : 'opacity-50'}`}>{format(d, 'MMM')}</p>
                       {hasMeet && (
                         <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${isToday ? 'bg-rose-500' : 'bg-violet-400'}`} />
+                      )}
+                      {weatherByDate[dateStr] && (
+                        <div className="mt-1 text-xs leading-tight">
+                          <span>{weatherByDate[dateStr].icon} {weatherByDate[dateStr].high}°/{weatherByDate[dateStr].low}°</span>
+                          {weatherByDate[dateStr].precipPct >= 20 && (
+                            <span className="text-blue-500 ml-0.5">· {weatherByDate[dateStr].precipPct}%</span>
+                          )}
+                        </div>
                       )}
                     </div>
                   )
