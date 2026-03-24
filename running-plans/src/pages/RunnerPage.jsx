@@ -8,8 +8,9 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'fire
 import { db } from '../firebase/config'
 import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 import { ctToText } from '../components/CrossTrainingInput'
-import { SWIM_WORKOUTS } from '../data/swimWorkouts'
+import { SWIM_WORKOUTS }    from '../data/swimWorkouts'
 import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
+import { MOBILITY_WORKOUT }  from '../data/mobilityWorkout'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -496,6 +497,12 @@ export default function RunnerPage() {
                                 <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.warmup}</p>
                               </div>
                             )}
+                            {a.drills && (
+                              <div className="border-l-2 border-lime-500 pl-2 py-0.5 bg-lime-50 rounded-r-lg">
+                                <p className="text-xs font-bold text-lime-700">Drills</p>
+                                <p className="text-xs text-gray-600 leading-snug">{a.drills}</p>
+                              </div>
+                            )}
                             {a.mainWorkout && (
                               <div className="border-l-2 border-rose-500 pl-2 py-0.5 bg-rose-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-rose-700">Main</p>
@@ -520,12 +527,12 @@ export default function RunnerPage() {
                                 <p className="text-xs text-gray-600 leading-snug line-clamp-2">{a.notes}</p>
                               </div>
                             )}
-                            {!a.warmup && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && (
+                            {!a.warmup && !a.drills && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && (
                               <p className="text-xs text-gray-300 text-center py-3 italic">Rest</p>
                             )}
 
                             {/* View full workout */}
-                            {(a.warmup || a.mainWorkout || a.cooldown || ctToText(a.crossTraining) || a.notes) && (
+                            {(a.warmup || a.drills || a.mainWorkout || a.cooldown || ctToText(a.crossTraining) || a.notes) && (
                               <button
                                 onClick={() => setDetailDate(dateStr)}
                                 className="w-full text-xs text-rose-400 hover:text-rose-600 font-semibold py-1 transition-colors text-center"
@@ -864,23 +871,37 @@ function SwimSection() {
 
 // ── Strength Section ──────────────────────────────────────────────────────────
 
+const ALL_STRENGTH = [...STRENGTH_WORKOUTS, MOBILITY_WORKOUT]
+
+const RUNNER_SECTION_COLORS = [
+  { border: 'border-sky-400',     bg: 'bg-sky-50',     label: 'text-sky-800',     num: 'bg-sky-400 text-white'     },
+  { border: 'border-violet-400',  bg: 'bg-violet-50',  label: 'text-violet-800',  num: 'bg-violet-400 text-white'  },
+  { border: 'border-amber-400',   bg: 'bg-amber-50',   label: 'text-amber-800',   num: 'bg-amber-400 text-white'   },
+  { border: 'border-emerald-400', bg: 'bg-emerald-50', label: 'text-emerald-800', num: 'bg-emerald-400 text-white' },
+]
+
 function StrengthSection() {
   const [selectedId, setSelectedId] = useState(null)
-  const workout = selectedId ? STRENGTH_WORKOUTS.find((w) => w.id === selectedId) : null
+  const workout = selectedId ? ALL_STRENGTH.find((w) => w.id === selectedId) : null
 
   return (
     <div>
-      <h2 className="text-xs font-black uppercase tracking-widest text-violet-400 mb-4">Strength Workouts</h2>
+      <h2 className="text-xs font-black uppercase tracking-widest text-violet-400 mb-4">Strength &amp; Mobility</h2>
 
       <select
         value={selectedId || ''}
         onChange={(e) => setSelectedId(e.target.value || null)}
         className="w-full border border-violet-200 bg-white px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 mb-3 text-violet-800"
       >
-        <option value="">— Select a strength workout —</option>
-        {STRENGTH_WORKOUTS.map((w) => (
-          <option key={w.id} value={w.id}>{w.title} · {w.type}</option>
-        ))}
+        <option value="">— Select a workout —</option>
+        <optgroup label="Strength">
+          {STRENGTH_WORKOUTS.map((w) => (
+            <option key={w.id} value={w.id}>{w.title} · {w.type}</option>
+          ))}
+        </optgroup>
+        <optgroup label="Recovery">
+          <option value="mobility">Mobility · Active Recovery</option>
+        </optgroup>
       </select>
 
       <div className="flex flex-wrap gap-2 mb-5">
@@ -897,9 +918,20 @@ function StrengthSection() {
             {w.title}
           </button>
         ))}
+        <button
+          onClick={() => setSelectedId(selectedId === 'mobility' ? null : 'mobility')}
+          className={`px-3 py-1 text-xs font-bold uppercase tracking-wide border transition-colors ${
+            selectedId === 'mobility'
+              ? 'bg-emerald-200 text-emerald-900 border-emerald-200'
+              : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'
+          }`}
+        >
+          🌿 Mobility
+        </button>
       </div>
 
-      {workout && (
+      {/* Exercises-based workout */}
+      {workout && workout.exercises && (
         <div className="border border-violet-100 bg-white overflow-hidden">
           <div className="bg-gradient-to-r from-violet-100 to-rose-100 px-5 py-4 flex items-center justify-between border-b border-violet-200">
             <div>
@@ -924,7 +956,7 @@ function StrengthSection() {
                 <div className="flex-1">
                   <p className="text-sm font-bold text-gray-900">{ex.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{ex.reps}</p>
-                  {ex.videos.length > 0 && (
+                  {ex.videos?.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
                       {ex.videos.map((v, vi) => (
                         <a key={vi} href={v.url} target="_blank" rel="noopener noreferrer"
@@ -941,6 +973,59 @@ function StrengthSection() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sections-based workout (Mobility) */}
+      {workout && workout.sections && (
+        <div className="border border-emerald-100 bg-white overflow-hidden rounded-xl">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-emerald-100 to-teal-100 px-5 py-4 flex items-center justify-between border-b border-emerald-200">
+            <div>
+              <p className="font-black text-base text-emerald-900">🌿 {workout.title}</p>
+              <p className="text-emerald-600 text-xs font-bold uppercase tracking-wide mt-0.5">{workout.type}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-black text-emerald-600">{workout.sections.length}</p>
+              <p className="text-emerald-400 text-xs uppercase tracking-wide">sections</p>
+            </div>
+          </div>
+          {workout.note && (
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3">
+              <p className="text-xs font-bold text-amber-700 mb-1 uppercase tracking-wide">Coach Note</p>
+              <p className="text-xs text-amber-800 leading-relaxed">{workout.note}</p>
+            </div>
+          )}
+          <div className="p-4 space-y-4">
+            {workout.sections.map((section, si) => {
+              const c = RUNNER_SECTION_COLORS[si % RUNNER_SECTION_COLORS.length]
+              return (
+                <div key={si} className={`border-l-4 ${c.border} ${c.bg} rounded-r-xl px-4 py-3`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${c.num}`}>
+                      {section.roman}
+                    </span>
+                    <div>
+                      <p className={`font-black text-xs uppercase tracking-wide ${c.label}`}>{section.name}</p>
+                      {section.description && (
+                        <p className="text-xs text-gray-500">{section.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pl-8">
+                    {section.items.map((item, ii) => (
+                      <div key={ii} className="flex items-start gap-1.5">
+                        <span className="text-xs font-bold text-gray-400 flex-shrink-0 mt-0.5">
+                          {String.fromCharCode(65 + ii)}.
+                        </span>
+                        <span className="text-xs text-gray-800">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1038,10 +1123,11 @@ function LogModal({ assignment, existingLog, onLogged, onCancel }) {
         </div>
 
         {/* Assigned workout quick-ref */}
-        {(assignment.mainWorkout || assignment.warmup) && (
+        {(assignment.mainWorkout || assignment.warmup || assignment.drills) && (
           <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 flex-shrink-0">
             <p className="text-xs font-black text-rose-400 uppercase tracking-widest mb-1">Assigned Workout</p>
             {assignment.warmup      && <p className="text-xs text-rose-600">Warm-Up: {assignment.warmup}</p>}
+            {assignment.drills      && <p className="text-xs text-lime-700">Drills: {assignment.drills}</p>}
             {assignment.mainWorkout && <p className="text-xs font-semibold text-rose-800">Main: {assignment.mainWorkout}</p>}
             {assignment.cooldown    && <p className="text-xs text-rose-600">Cool-Down: {assignment.cooldown}</p>}
           </div>
@@ -1390,6 +1476,16 @@ function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog,
             <Section color="green" label="Warm-Up" text={a.warmup} />
           )}
 
+          {/* Drills */}
+          {a.drills && (
+            <Section color="lime" label="Drills" text={a.drills} />
+          )}
+
+          {/* Additional warm-up */}
+          {a.additionalWarmup && (
+            <Section color="green" label="Additional Warm-Up" text={a.additionalWarmup} />
+          )}
+
           {/* Main Workout */}
           {a.mainWorkout && (
             <Section color="rose" label="Main Workout" text={a.mainWorkout} large />
@@ -1424,7 +1520,7 @@ function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog,
             </div>
           )}
 
-          {!a.warmup && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && dayMeets.length === 0 && (
+          {!a.warmup && !a.drills && !a.additionalWarmup && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && dayMeets.length === 0 && (
             <p className="text-center text-gray-400 italic py-6">Rest day — nothing assigned.</p>
           )}
         </div>
@@ -1455,6 +1551,7 @@ function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog,
 function Section({ color, label, text, large = false }) {
   const colors = {
     green: { border: 'border-green-400', bg: 'bg-green-50', label: 'text-green-700', text: 'text-gray-700' },
+    lime:  { border: 'border-lime-500',  bg: 'bg-lime-50',  label: 'text-lime-700',  text: 'text-gray-700' },
     rose:  { border: 'border-rose-500',  bg: 'bg-rose-50',  label: 'text-rose-700',  text: 'text-gray-800' },
     sky:   { border: 'border-sky-400',   bg: 'bg-sky-50',   label: 'text-sky-700',   text: 'text-gray-700' },
     teal:  { border: 'border-teal-400',  bg: 'bg-teal-50',  label: 'text-teal-700',  text: 'text-gray-700' },
