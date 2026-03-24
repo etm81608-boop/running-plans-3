@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  collection, query, where, getDocs, addDoc, serverTimestamp,
+  collection, query, where, orderBy, getDocs, addDoc, serverTimestamp,
   doc, getDoc, updateDoc,
 } from 'firebase/firestore'
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
@@ -38,38 +38,7 @@ function shiftWeek(mondayStr, n) {
 
 // ── Meet data ─────────────────────────────────────────────────────────────────
 
-const ALL_MEETS = [
-  { id: 'v1',  date: '2026-03-21', name: 'Upper Darby Relays',            location: 'Upper Darby High School',            home: false, level: 'Varsity' },
-  { id: 'v2',  date: '2026-03-27', name: 'Neshaminy Distance Festival',    location: 'Neshaminy High School',              home: false, level: 'Varsity' },
-  { id: 'v3',  date: '2026-04-08', name: 'Multi-Team Meet',                location: 'William Penn Charter School',        home: false, level: 'Varsity' },
-  { id: 'v4',  date: '2026-04-10', name: 'Haverford Distance Night',       location: 'Haverford High School',              home: false, level: 'Varsity' },
-  { id: 'v5',  date: '2026-04-11', name: 'DELCO Relays',                   location: 'Marple Newtown High School',         home: false, level: 'Varsity' },
-  { id: 'v6',  date: '2026-04-11', name: 'Brooks Fords Track Classic',     location: 'Haverford High School',              home: false, level: 'Varsity' },
-  { id: 'v7',  date: '2026-04-15', name: 'Home Multi-Team Meet',           location: 'Greenwood Track',                    home: true,  level: 'Varsity' },
-  { id: 'v8',  date: '2026-04-18', name: 'Kellerman Relays',               location: 'Great Valley High School',           home: false, level: 'Varsity' },
-  { id: 'v9',  date: '2026-04-23', name: 'Penn Relays — Day 1',            location: 'Franklin Field, Philadelphia',        home: false, level: 'Varsity' },
-  { id: 'v10', date: '2026-04-24', name: 'Penn Relays — Day 2',            location: 'Franklin Field, Philadelphia',        home: false, level: 'Varsity' },
-  { id: 'v11', date: '2026-04-29', name: 'Away Dual/Tri Meet',             location: 'Germantown Academy',                 home: false, level: 'Varsity' },
-  { id: 'v12', date: '2026-04-30', name: 'DELCO Champs — Day 1',           location: 'Upper Darby High School',            home: false, level: 'Varsity', championship: true },
-  { id: 'v13', date: '2026-05-02', name: 'DELCO Champs — Day 2',           location: 'Rap Curry Athletic Complex',         home: false, level: 'Varsity', championship: true },
-  { id: 'v14', date: '2026-05-09', name: 'Inter-Ac Track Champs',          location: 'Greenwood Track',                    home: true,  level: 'Varsity', championship: true },
-  { id: 'v15', date: '2026-05-16', name: 'PAISAA Championship',            location: 'Malvern Preparatory School',         home: false, level: 'Varsity', championship: true },
-  { id: 'm1',  date: '2026-04-02', name: 'EA @ Penn Charter',              location: 'William Penn Charter School',        home: false, level: 'MS' },
-  { id: 'm2',  date: '2026-04-08', name: 'Penn Relay Qualifier',           location: 'William Penn Charter School',        home: false, level: 'MS' },
-  { id: 'm3',  date: '2026-04-13', name: "MP & St. Anne's @ EA",           location: 'Greenwood Track',                    home: true,  level: 'MS' },
-  { id: 'm4',  date: '2026-04-23', name: 'EA & Notre Dame @ GA',           location: 'Germantown Academy',                 home: false, level: 'MS' },
-  { id: 'm5',  date: '2026-04-24', name: 'Penn Relays',                    location: 'Franklin Field, Philadelphia',        home: false, level: 'MS' },
-  { id: 'm6',  date: '2026-04-27', name: 'EA @ Springside Chestnut Hill',  location: 'Springside Chestnut Hill Academy',   home: false, level: 'MS' },
-  { id: 'm7',  date: '2026-04-30', name: 'Haverford School @ EA',          location: 'Greenwood Track',                    home: true,  level: 'MS' },
-  { id: 'm8',  date: '2026-05-04', name: 'IAAL Championship',              location: 'TBD',                                home: false, level: 'MS', championship: true },
-  { id: 'm9',  date: '2026-05-20', name: 'DELCO Champs',                   location: 'Rap Curry Athletic Complex',         home: false, level: 'MS', championship: true },
-]
-
-const MEETS_BY_DATE = {}
-ALL_MEETS.forEach((m) => {
-  if (!MEETS_BY_DATE[m.date]) MEETS_BY_DATE[m.date] = []
-  MEETS_BY_DATE[m.date].push(m)
-})
+// meets loaded from Firestore — see allMeets state inside RunnerPage component
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
@@ -101,6 +70,7 @@ export default function RunnerPage() {
   const [showPastMeets,    setShowPastMeets]    = useState(false)
   const [profilePicUrl,    setProfilePicUrl]    = useState(null)
   const [uploading,        setUploading]        = useState(false)
+  const [allMeets,         setAllMeets]         = useState([])
   const fileInputRef = useRef(null)
 
   // Password / lock
@@ -163,6 +133,13 @@ export default function RunnerPage() {
     load()
   }, [runnerId])
 
+  // Load meets from Firestore
+  useEffect(() => {
+    getDocs(query(collection(db, 'meets'), orderBy('date')))
+      .then((snap) => setAllMeets(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+      .catch(() => {})
+  }, [])
+
   async function handlePicUpload(file) {
     if (!file) return
     setUploading(true)
@@ -217,8 +194,16 @@ export default function RunnerPage() {
   )
   const loggedCount = loggedIds.length
 
-  const varsityMeets  = ALL_MEETS.filter((m) => m.level === 'Varsity')
-  const msMeets       = ALL_MEETS.filter((m) => m.level === 'MS')
+  const varsityMeets  = allMeets.filter((m) => m.type === 'varsity')
+  const msMeets       = allMeets.filter((m) => m.type === 'ms')
+  const MEETS_BY_DATE = useMemo(() => {
+    const map = {}
+    allMeets.forEach((m) => {
+      if (!map[m.date]) map[m.date] = []
+      map[m.date].push(m)
+    })
+    return map
+  }, [allMeets])
 
   const upcomingVarsity = varsityMeets.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))
   const pastVarsity     = varsityMeets.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))
