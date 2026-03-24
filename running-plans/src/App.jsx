@@ -14,6 +14,9 @@ import RunnerLogs from './pages/RunnerLogs'
 import RunnerPage from './pages/RunnerPage'
 import Meets from './pages/Meets'
 import TeamGrid from './pages/TeamGrid'
+import StrengthWorkouts from './pages/StrengthWorkouts'
+import SwimWorkouts from './pages/SwimWorkouts'
+import DataExport from './pages/DataExport'
 
 export default function App() {
   return (
@@ -40,6 +43,9 @@ export default function App() {
             <Route path="logs" element={<RunnerLogs />} />
             <Route path="meets" element={<Meets />} />
             <Route path="team-grid" element={<TeamGrid />} />
+            <Route path="strength-workouts" element={<StrengthWorkouts />} />
+            <Route path="swim-workouts" element={<SwimWorkouts />} />
+            <Route path="export" element={<DataExport />} />
           </Route>
         </Routes>
       </AuthProvider>
