@@ -3,7 +3,7 @@ import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import {
-  collection, updateDoc, deleteDoc, doc, writeBatch,
+  collection, addDoc, updateDoc, doc, writeBatch, serverTimestamp,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
@@ -101,15 +101,131 @@ function PrintView({ grouped }) {
   )
 }
 
+// ── Workout form fields (shared between create & edit modals) ─────────────────
+
+function WorkoutFormFields({ form, setField }) {
+  return (
+    <>
+      {/* 1 — Workout Type & Title */}
+      <Card step="1" title="Workout Type & Title">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={form.workoutType}
+              onChange={(e) => setField('workoutType', e.target.value)}
+            >
+              <option value="">— select type —</option>
+              {FORM_WORKOUT_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Title <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input
+              type="text"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={form.workoutTitle}
+              onChange={(e) => setField('workoutTitle', e.target.value)}
+              placeholder="e.g. Threshold Tuesday"
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* 2 — Warm-Up */}
+      <Card step="2" title="Warm-Up">
+        <textarea rows={2}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          value={form.warmup}
+          onChange={(e) => setField('warmup', e.target.value)}
+          placeholder="e.g. 10 min easy jog"
+        />
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Drills</label>
+          <select
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={form.drills}
+            onChange={(e) => setField('drills', e.target.value)}
+          >
+            <option value="">— none —</option>
+            {DRILL_OPTIONS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Additional Warm-Up <span className="text-gray-400 font-normal">(optional)</span></label>
+          <textarea rows={2}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+            value={form.additionalWarmup}
+            onChange={(e) => setField('additionalWarmup', e.target.value)}
+            placeholder="e.g. strides, hurdle mobility"
+          />
+        </div>
+      </Card>
+
+      {/* 3 — Main Workout */}
+      <Card step="3" title="Main Workout">
+        <textarea rows={4}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          value={form.mainWorkout}
+          onChange={(e) => setField('mainWorkout', e.target.value)}
+          placeholder="e.g. 6 x 800m @ 5K pace, 90 sec rest"
+        />
+      </Card>
+
+      {/* 4 — Cool-Down */}
+      <Card step="4" title="Cool-Down">
+        <textarea rows={2}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          value={form.cooldown}
+          onChange={(e) => setField('cooldown', e.target.value)}
+          placeholder="e.g. 10 min easy, stretching"
+        />
+      </Card>
+
+      {/* 5 — Cross Training */}
+      <Card step="5" title="Cross Training">
+        <CrossTrainingInput
+          value={form.crossTraining}
+          onChange={(v) => setField('crossTraining', v)}
+        />
+      </Card>
+
+      {/* 6 — Coach Notes */}
+      <Card step="6" title="Coach Notes">
+        <textarea rows={2}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+          value={form.notes}
+          onChange={(e) => setField('notes', e.target.value)}
+          placeholder="Notes visible to athletes…"
+        />
+      </Card>
+    </>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
   const { docs: assignments } = useCollection('assignments', 'date')
+  const { docs: allRunners }  = useCollection('runners', 'name')
 
   const [printMode,  setPrintMode]  = useState(false)
   const [toast,      setToast]      = useState(null)
-  const [editModal,  setEditModal]  = useState(null) // { assignmentIds, runnerNames, date, form }
-  const [form,       setForm]       = useState(EMPTY_FORM)
+
+  // ── Create modal state ───────────────────────────────────────────────────────
+  const [createModal,     setCreateModal]     = useState(null) // { date }
+  const [createForm,      setCreateForm]      = useState(EMPTY_FORM)
+  const [selectedRunners, setSelectedRunners] = useState([])
+  const [creating,        setCreating]        = useState(false)
+
+  // ── Edit modal state ─────────────────────────────────────────────────────────
+  const [editModal,  setEditModal]  = useState(null)
+  const [editForm,   setEditForm]   = useState(EMPTY_FORM)
   const [saving,     setSaving]     = useState(false)
   const [deleting,   setDeleting]   = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -117,17 +233,15 @@ export default function CalendarPage() {
   // ── Group assignments by date + workout ──────────────────────────────────────
 
   const { grouped, runnerCountByDay } = useMemo(() => {
-    const map = {}         // key → grouped event
-    const countMap = {}    // dateStr → Set of runner names
+    const map      = {}
+    const countMap = {}
 
     assignments.forEach((a) => {
       if (!a.date) return
 
-      // Runner count per day
       if (!countMap[a.date]) countMap[a.date] = new Set()
       countMap[a.date].add(a.runnerName || a.runnerId || 'unknown')
 
-      // Group key: date + workoutTitle (or workoutType)
       const key = `${a.date}__${a.workoutTitle || a.workoutType || 'workout'}`
 
       if (!map[key]) {
@@ -177,12 +291,69 @@ export default function CalendarPage() {
     })),
   [grouped])
 
+  // ── Create handlers ───────────────────────────────────────────────────────────
+
+  function handleDateClick({ dateStr }) {
+    setCreateForm(EMPTY_FORM)
+    setSelectedRunners([])
+    setCreateModal({ date: dateStr })
+  }
+
+  function toggleRunner(runner) {
+    setSelectedRunners((prev) =>
+      prev.find((r) => r.id === runner.id)
+        ? prev.filter((r) => r.id !== runner.id)
+        : [...prev, runner]
+    )
+  }
+
+  function setCreateField(field, value) {
+    setCreateForm((f) => ({ ...f, [field]: value }))
+  }
+
+  async function handleCreateSave() {
+    if (!createModal || selectedRunners.length === 0) return
+    setCreating(true)
+    const dateStr = format(parseISO(createModal.date + 'T12:00:00'), 'MMMM d, yyyy')
+    const base = {
+      date:             createModal.date,
+      dateStr,
+      workoutType:      createForm.workoutType,
+      workoutTitle:     createForm.workoutTitle.trim() || createForm.mainWorkout.trim().slice(0, 60) || 'Workout',
+      warmup:           createForm.warmup.trim(),
+      drills:           createForm.drills,
+      additionalWarmup: createForm.additionalWarmup.trim(),
+      mainWorkout:      createForm.mainWorkout.trim(),
+      cooldown:         createForm.cooldown.trim(),
+      crossTraining:    createForm.crossTraining,
+      notes:            createForm.notes.trim(),
+    }
+    try {
+      await Promise.all(
+        selectedRunners.map((r) =>
+          addDoc(collection(db, 'assignments'), {
+            ...base,
+            runnerId:   r.id,
+            runnerName: r.name,
+            createdAt:  serverTimestamp(),
+          })
+        )
+      )
+      setToast({ message: `Workout assigned to ${selectedRunners.length} runner${selectedRunners.length !== 1 ? 's' : ''}!`, type: 'success' })
+      setCreateModal(null)
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' })
+    } finally {
+      setCreating(false)
+    }
+  }
+
   // ── Edit handlers ─────────────────────────────────────────────────────────────
 
   function handleEventClick({ event }) {
     const g = grouped.find((x) => x.key === event.extendedProps.groupKey)
     if (!g) return
-    setForm({
+    setEditForm({
       workoutType:      g.workoutType,
       workoutTitle:     g.workoutTitle,
       warmup:           g.warmup,
@@ -206,8 +377,8 @@ export default function CalendarPage() {
     setConfirmDel(false)
   }
 
-  function setField(field, value) {
-    setForm((f) => ({ ...f, [field]: value }))
+  function setEditField(field, value) {
+    setEditForm((f) => ({ ...f, [field]: value }))
   }
 
   async function handleEditSave() {
@@ -216,15 +387,15 @@ export default function CalendarPage() {
     const dateStr = format(parseISO(editModal.date + 'T12:00:00'), 'MMMM d, yyyy')
     const patch = {
       dateStr,
-      workoutType:      form.workoutType,
-      workoutTitle:     form.workoutTitle.trim() || form.mainWorkout.trim().slice(0, 60) || 'Workout',
-      warmup:           form.warmup.trim(),
-      drills:           form.drills,
-      additionalWarmup: form.additionalWarmup.trim(),
-      mainWorkout:      form.mainWorkout.trim(),
-      cooldown:         form.cooldown.trim(),
-      crossTraining:    form.crossTraining,
-      notes:            form.notes.trim(),
+      workoutType:      editForm.workoutType,
+      workoutTitle:     editForm.workoutTitle.trim() || editForm.mainWorkout.trim().slice(0, 60) || 'Workout',
+      warmup:           editForm.warmup.trim(),
+      drills:           editForm.drills,
+      additionalWarmup: editForm.additionalWarmup.trim(),
+      mainWorkout:      editForm.mainWorkout.trim(),
+      cooldown:         editForm.cooldown.trim(),
+      crossTraining:    editForm.crossTraining,
+      notes:            editForm.notes.trim(),
     }
     try {
       const batch = writeBatch(db)
@@ -298,7 +469,7 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Master Calendar</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Click any workout to edit it.</p>
+          <p className="text-sm text-gray-500 mt-0.5">Click a date to add a workout · Click a workout to edit it.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -330,16 +501,31 @@ export default function CalendarPage() {
           initialView="dayGridMonth"
           events={calendarEvents}
           eventClick={handleEventClick}
+          dateClick={handleDateClick}
           eventCursor="pointer"
           dayCellContent={(arg) => {
             const dateStr = arg.date.toISOString().split('T')[0]
             const count   = runnerCountByDay[dateStr] || 0
             return (
-              <div className="relative w-full h-full min-h-[2rem]">
-                <span className="fc-daygrid-day-number">{arg.dayNumberText}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', padding: '2px 4px' }}>
+                <span style={{ fontSize: '0.85em', fontWeight: '500', color: '#374151' }}>
+                  {arg.dayNumberText}
+                </span>
                 {count > 0 && (
                   <span
-                    className="absolute top-0.5 right-0.5 min-w-[1.15rem] h-[1.15rem] rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none"
+                    style={{
+                      minWidth: '1.15rem', height: '1.15rem',
+                      borderRadius: '50%',
+                      backgroundColor: '#4f46e5',
+                      color: 'white',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 3px',
+                      lineHeight: 1,
+                    }}
                     title={`${count} runner${count !== 1 ? 's' : ''}`}
                   >
                     {count}
@@ -357,7 +543,65 @@ export default function CalendarPage() {
         />
       </div>
 
-      {/* Edit Modal */}
+      {/* ── Create Modal ─────────────────────────────────────────────────────── */}
+      <Modal
+        isOpen={!!createModal}
+        onClose={() => setCreateModal(null)}
+        title={createModal ? `Add Workout — ${format(parseISO(createModal.date + 'T12:00:00'), 'MMMM d, yyyy')}` : ''}
+        size="lg"
+      >
+        {createModal && (
+          <div className="space-y-3">
+
+            {/* Runner picker */}
+            <Card step="0" title="Assign To">
+              <p className="text-xs text-gray-500 mb-2">Select one or more runners for this workout.</p>
+              <div className="flex flex-wrap gap-2">
+                {allRunners.map((r) => {
+                  const isSelected = selectedRunners.some((x) => x.id === r.id)
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => toggleRunner(r)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-400 hover:text-indigo-600'
+                      }`}
+                    >
+                      {r.name}
+                    </button>
+                  )
+                })}
+              </div>
+              {selectedRunners.length === 0 && (
+                <p className="text-xs text-amber-600 mt-2">Select at least one runner to save.</p>
+              )}
+            </Card>
+
+            <WorkoutFormFields form={createForm} setField={setCreateField} />
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setCreateModal(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSave}
+                disabled={creating || selectedRunners.length === 0}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+              >
+                {creating ? 'Saving…' : `Assign to ${selectedRunners.length || '—'} Runner${selectedRunners.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Edit Modal ───────────────────────────────────────────────────────── */}
       <Modal
         isOpen={!!editModal}
         onClose={closeEditModal}
@@ -380,104 +624,7 @@ export default function CalendarPage() {
               </p>
             )}
 
-            {/* 1 — Workout Type & Title */}
-            <Card step="1" title="Workout Type & Title">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-                  <select
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    value={form.workoutType}
-                    onChange={(e) => setField('workoutType', e.target.value)}
-                  >
-                    <option value="">— select type —</option>
-                    {FORM_WORKOUT_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Title <span className="text-gray-400 font-normal">(optional)</span></label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    value={form.workoutTitle}
-                    onChange={(e) => setField('workoutTitle', e.target.value)}
-                    placeholder="e.g. Threshold Tuesday"
-                  />
-                </div>
-              </div>
-            </Card>
-
-            {/* 2 — Warm-Up */}
-            <Card step="2" title="Warm-Up">
-              <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                value={form.warmup}
-                onChange={(e) => setField('warmup', e.target.value)}
-                placeholder="e.g. 10 min easy jog"
-              />
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Drills</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={form.drills}
-                  onChange={(e) => setField('drills', e.target.value)}
-                >
-                  <option value="">— none —</option>
-                  {DRILL_OPTIONS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Additional Warm-Up <span className="text-gray-400 font-normal">(optional)</span></label>
-                <textarea rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                  value={form.additionalWarmup}
-                  onChange={(e) => setField('additionalWarmup', e.target.value)}
-                  placeholder="e.g. strides, hurdle mobility"
-                />
-              </div>
-            </Card>
-
-            {/* 3 — Main Workout */}
-            <Card step="3" title="Main Workout">
-              <textarea rows={4}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                value={form.mainWorkout}
-                onChange={(e) => setField('mainWorkout', e.target.value)}
-                placeholder="e.g. 6 x 800m @ 5K pace, 90 sec rest"
-              />
-            </Card>
-
-            {/* 4 — Cool-Down */}
-            <Card step="4" title="Cool-Down">
-              <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                value={form.cooldown}
-                onChange={(e) => setField('cooldown', e.target.value)}
-                placeholder="e.g. 10 min easy, stretching"
-              />
-            </Card>
-
-            {/* 5 — Cross Training */}
-            <Card step="5" title="Cross Training">
-              <CrossTrainingInput
-                value={form.crossTraining}
-                onChange={(v) => setField('crossTraining', v)}
-              />
-            </Card>
-
-            {/* 6 — Coach Notes */}
-            <Card step="6" title="Coach Notes">
-              <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                value={form.notes}
-                onChange={(e) => setField('notes', e.target.value)}
-                placeholder="Notes visible to athletes…"
-              />
-            </Card>
+            <WorkoutFormFields form={editForm} setField={setEditField} />
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-2">
