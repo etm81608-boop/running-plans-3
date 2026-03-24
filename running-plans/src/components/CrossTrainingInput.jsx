@@ -3,18 +3,19 @@
  * ──────────────────
  * Reusable cross-training selector used in:
  *   - AssignWorkout (coach side)
+ *   - TeamGrid
  *   - Any future form that assigns CT
  *
- * Also exports `ctToText(ct)` — converts a crossTraining object
- * to a human-readable string, used by RunnerPage and RunnerLogs.
+ * Also exports:
+ *   EMPTY_CT       — blank default value for forms
+ *   normaliseCT()  — converts legacy CT shapes to current format
+ *   ctToText()     — converts a crossTraining object to a readable string
  */
 
-import { SWIM_WORKOUTS }   from '../data/swimWorkouts'
+import { SWIM_WORKOUTS }     from '../data/swimWorkouts'
 import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
 
 // ── Lift options ──────────────────────────────────────────────────────────────
-// General categories come first, then the named strength workouts from the
-// strength page so the two stay in sync automatically.
 const LIFT_OPTIONS = [
   'Mobility',
   'Heavy Lift',
@@ -44,7 +45,15 @@ export function normaliseCT(ct) {
     }
   }
   // Old boolean format: { swim: true, bike: true, ... }
-  const type = ct.swim ? 'swim' : ct.bike ? 'bike' : ct.walk ? 'walk' : ct.elliptical ? 'elliptical' : ''
+  const type = ct.swim
+    ? 'swim'
+    : ct.bike
+    ? 'bike'
+    : ct.walk
+    ? 'walk'
+    : ct.elliptical
+    ? 'elliptical'
+    : ''
   return { type, swimWorkoutId: '', liftOption: '', notes: '' }
 }
 
@@ -57,115 +66,112 @@ const CT_TYPES = [
 ]
 
 // ── ctToText ──────────────────────────────────────────────────────────────────
-// Accepts the crossTraining field from a Firestore assignment doc.
-// Handles both the old object format and the new { type, ... } format.
+
+/**
+ * ctToText — converts a crossTraining object to a human-readable string.
+ * Handles old boolean format and new typed format.
+ */
 export function ctToText(ct) {
   if (!ct) return ''
 
-  // Very old format: { swim: true/false, bike: true/false, ... }
-  if (ct.swim === true || ct.bike === true || ct.walk === true || ct.elliptical === true) {
-    return [ct.swim && 'Swim', ct.bike && 'Bike', ct.walk && 'Walk', ct.elliptical && 'Elliptical']
-      .filter(Boolean).join(', ')
+  // Old boolean format
+  if (ct.type === undefined) {
+    if (ct.swim)       return 'Swim'
+    if (ct.bike)       return 'Bike / Cycling'
+    if (ct.walk)       return 'Walk'
+    if (ct.elliptical) return 'Elliptical'
+    return ''
   }
 
-  // Old string format: { type: 'lift', liftOption: '...' } (no swimWorkoutId)
-  // New format: { type: 'swim', swimWorkoutId: '...', liftOption: '...', notes: '...' }
   if (!ct.type) return ''
 
   switch (ct.type) {
     case 'swim': {
-      const wo = SWIM_WORKOUTS.find((w) => w.id === ct.swimWorkoutId)
-      return wo ? `Swim — ${wo.title}` : 'Swim'
+      if (ct.swimWorkoutId) {
+        const w = SWIM_WORKOUTS.find((s) => s.id === ct.swimWorkoutId)
+        return w ? `Swim — ${w.title}` : 'Swim'
+      }
+      return 'Swim'
     }
-    case 'lift':
+    case 'lift': {
       return ct.liftOption ? `Lift — ${ct.liftOption}` : 'Lift'
-    case 'bike':
-      return ct.notes ? `Bike / Cycling · ${ct.notes}` : 'Bike / Cycling'
-    case 'walk':
-      return ct.notes ? `Walk · ${ct.notes}` : 'Walk'
-    case 'elliptical':
-      return ct.notes ? `Elliptical · ${ct.notes}` : 'Elliptical'
-    default:
-      return ct.type || ''
+    }
+    case 'bike':       return ct.notes ? `Bike / Cycling — ${ct.notes}` : 'Bike / Cycling'
+    case 'walk':       return ct.notes ? `Walk — ${ct.notes}`           : 'Walk'
+    case 'elliptical': return ct.notes ? `Elliptical — ${ct.notes}`     : 'Elliptical'
+    default:           return ct.type
   }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-// value shape: { type, swimWorkoutId, liftOption, notes }
-// onChange: (newValue) => void
-export default function CrossTrainingInput({ value = {}, onChange }) {
-  function set(field, val) {
-    onChange({ ...value, [field]: val })
-  }
 
-  function changeType(newType) {
-    onChange({ type: newType, swimWorkoutId: '', liftOption: '', notes: '' })
+/**
+ * CrossTrainingInput
+ *
+ * Props:
+ *   value    — crossTraining object: { type, swimWorkoutId, liftOption, notes }
+ *   onChange — called with new crossTraining object whenever anything changes
+ */
+export default function CrossTrainingInput({ value, onChange }) {
+  const ct = normaliseCT(value)
+
+  function set(patch) {
+    onChange({ ...ct, ...patch })
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
+      {/* Type selector */}
+      <select
+        value={ct.type}
+        onChange={(e) => set({ type: e.target.value, swimWorkoutId: '', liftOption: '', notes: '' })}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      >
+        <option value="">— None —</option>
+        {CT_TYPES.map((t) => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
+      </select>
 
-      {/* Type */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+      {/* Swim sub-selector */}
+      {ct.type === 'swim' && (
         <select
-          value={value.type || ''}
-          onChange={(e) => changeType(e.target.value)}
-          className="w-full sm:w-72 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+          value={ct.swimWorkoutId}
+          onChange={(e) => set({ swimWorkoutId: e.target.value })}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         >
-          <option value="">— none —</option>
-          {CT_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+          <option value="">— Select swim workout —</option>
+          {SWIM_WORKOUTS.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.title}{w.subtitle ? ` · ${w.subtitle}` : ''}
+            </option>
           ))}
         </select>
-      </div>
-
-      {/* Swim workout sub-dropdown */}
-      {value.type === 'swim' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Swim Workout</label>
-          <select
-            value={value.swimWorkoutId || ''}
-            onChange={(e) => set('swimWorkoutId', e.target.value)}
-            className="w-full sm:w-72 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
-          >
-            <option value="">— choose swim workout —</option>
-            {SWIM_WORKOUTS.map((w) => (
-              <option key={w.id} value={w.id}>{w.title} · {w.subtitle}</option>
-            ))}
-          </select>
-        </div>
       )}
 
-      {/* Lift sub-dropdown */}
-      {value.type === 'lift' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Lift Type</label>
-          <select
-            value={value.liftOption || ''}
-            onChange={(e) => set('liftOption', e.target.value)}
-            className="w-full sm:w-72 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
-          >
-            <option value="">— choose lift —</option>
-            {LIFT_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
+      {/* Lift sub-selector */}
+      {ct.type === 'lift' && (
+        <select
+          value={ct.liftOption}
+          onChange={(e) => set({ liftOption: e.target.value })}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          <option value="">— Select lift option —</option>
+          {LIFT_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
       )}
 
-      {/* Duration / notes for all other types */}
-      {value.type && value.type !== 'swim' && value.type !== 'lift' && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Duration / Notes</label>
-          <input
-            type="text"
-            value={value.notes || ''}
-            onChange={(e) => set('notes', e.target.value)}
-            placeholder="e.g. 30 min easy"
-            className="w-full sm:w-72 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-          />
-        </div>
+      {/* Notes / duration for bike, walk, elliptical */}
+      {(ct.type === 'bike' || ct.type === 'walk' || ct.type === 'elliptical') && (
+        <input
+          type="text"
+          placeholder="Duration or notes (optional)"
+          value={ct.notes}
+          onChange={(e) => set({ notes: e.target.value })}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        />
       )}
     </div>
   )
