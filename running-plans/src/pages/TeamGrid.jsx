@@ -7,7 +7,7 @@ import { useCollection } from '../hooks/useCollection'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 import { format, addDays, startOfWeek, parseISO } from 'date-fns'
-import CrossTrainingInput, { EMPTY_CT, ctToText, normaliseCT } from '../components/CrossTrainingInput'
+import CrossTrainingInput, { ctToText, normaliseCT } from '../components/CrossTrainingInput'
 import { WORKOUT_TYPES } from '../utils/constants'
 import useWeather from '../hooks/useWeather'
 
@@ -46,7 +46,7 @@ const EMPTY_FORM = {
   additionalWarmup: '',
   mainWorkout:      '',
   cooldown:         '',
-  crossTraining:    EMPTY_CT,
+  crossTraining:    [],
   notes:            '',
   visibilityGroup:  '',
 }
@@ -103,12 +103,22 @@ export default function TeamGrid() {
   const weatherByDate = useWeather(wxStart, wxEnd)
 
   const [selectedIds, setSelectedIds] = useState([])
+  const [expandedRunners, setExpandedRunners] = useState(new Set())
 
   function toggleRunner(id) {
     setSelectedIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id)
       if (prev.length >= MAX_RUNNERS) return prev
       return [...prev, id]
+    })
+  }
+
+  function toggleExpand(id) {
+    setExpandedRunners((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
   }
 
@@ -331,18 +341,32 @@ export default function TeamGrid() {
               </thead>
               <tbody>
                 {selectedRunners.map((runner, runnerIdx) => {
-                  const color = RUNNER_COLORS[runnerIdx % RUNNER_COLORS.length]
+                  const color      = RUNNER_COLORS[runnerIdx % RUNNER_COLORS.length]
+                  const isExpanded = expandedRunners.has(runner.id)
                   return (
                     <tr key={runner.id} className="group">
-                      <td className={`border-b border-r border-gray-100 px-4 py-3 align-top ${color.light}`}>
+                      <td className={`border-b border-r border-gray-100 px-3 py-3 align-top ${color.light}`}>
                         <div className="flex items-center gap-2">
                           <div className={`w-7 h-7 rounded-full ${color.bg} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
                             {getInitials(runner.name)}
                           </div>
-                          <div>
-                            <p className={`text-sm font-semibold ${color.text} leading-tight`}>{runner.name}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold ${color.text} leading-tight truncate`}>{runner.name}</p>
                             {runner.group && <p className="text-xs text-gray-400">{runner.group}</p>}
                           </div>
+                          <button
+                            onClick={() => toggleExpand(runner.id)}
+                            title={isExpanded ? 'Collapse details' : 'Expand full details'}
+                            className={`flex-shrink-0 w-6 h-6 rounded flex items-center justify-center transition-colors ${
+                              isExpanded
+                                ? `${color.bg} text-white`
+                                : `text-gray-400 hover:${color.bg} hover:text-white`
+                            }`}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
                         </div>
                       </td>
                       {weekDays.map((day) => {
@@ -350,6 +374,7 @@ export default function TeamGrid() {
                         const existing = assignmentsByRunnerDate[runner.id]?.[dateStr]
                         const isPast   = dateStr < today
                         const isToday  = dateStr === today
+                        const ctText   = existing ? ctToText(existing.crossTraining) : ''
                         return (
                           <td
                             key={dateStr}
@@ -359,25 +384,89 @@ export default function TeamGrid() {
                               : isPast ? 'bg-gray-50/60 hover:bg-gray-100/60'
                               : 'bg-white hover:bg-gray-50'
                             }`}
-                            style={{ minHeight: '80px', height: '80px' }}
+                            style={isExpanded ? {} : { minHeight: '80px', height: '80px' }}
                           >
                             {existing ? (
-                              <div className={`border-l-2 ${color.border} pl-2 pr-1 py-1 h-full flex flex-col gap-1 bg-white`}>
-                                {existing.mainWorkout ? (
-                                  <p className={`text-xs font-semibold leading-snug line-clamp-3 ${color.text}`}>
-                                    {existing.mainWorkout.split('\n')[0]}
-                                  </p>
-                                ) : existing.workoutType ? (
-                                  <p className={`text-xs font-semibold leading-snug ${color.text}`}>
-                                    {WORKOUT_TYPES.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
-                                  </p>
-                                ) : (
-                                  <p className="text-xs text-gray-400 italic">Rest</p>
+                              <div className={`border-l-2 ${color.border} pl-2 pr-1 py-1 flex flex-col gap-1 bg-white h-full`}>
+                                {/* Compact view */}
+                                {!isExpanded && (
+                                  <>
+                                    {existing.mainWorkout ? (
+                                      <p className={`text-xs font-semibold leading-snug line-clamp-3 ${color.text}`}>
+                                        {existing.mainWorkout.split('\n')[0]}
+                                      </p>
+                                    ) : existing.workoutType ? (
+                                      <p className={`text-xs font-semibold leading-snug ${color.text}`}>
+                                        {WORKOUT_TYPES.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-gray-400 italic">Rest</p>
+                                    )}
+                                    <div className="mt-auto"><span className="text-xs text-gray-300">✏️</span></div>
+                                  </>
                                 )}
-                                <div className="mt-auto"><span className="text-xs text-gray-300">✏️</span></div>
+                                {/* Expanded detail view */}
+                                {isExpanded && (
+                                  <div className="space-y-1.5 py-1">
+                                    {existing.workoutType && (
+                                      <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full ${color.light} ${color.text}`}>
+                                        {WORKOUT_TYPES.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
+                                      </span>
+                                    )}
+                                    {existing.workoutTitle && (
+                                      <p className={`text-xs font-semibold ${color.text}`}>{existing.workoutTitle}</p>
+                                    )}
+                                    {existing.warmup && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Warm-Up</p>
+                                        <p className="text-xs text-gray-600 leading-snug">{existing.warmup}</p>
+                                      </div>
+                                    )}
+                                    {existing.drills && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Drills</p>
+                                        <p className="text-xs text-gray-600">{existing.drills}</p>
+                                      </div>
+                                    )}
+                                    {existing.additionalWarmup && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Add'l Warm-Up</p>
+                                        <p className="text-xs text-gray-600 leading-snug">{existing.additionalWarmup}</p>
+                                      </div>
+                                    )}
+                                    {existing.mainWorkout && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Main Workout</p>
+                                        <p className={`text-xs font-medium leading-snug ${color.text}`}>{existing.mainWorkout}</p>
+                                      </div>
+                                    )}
+                                    {existing.cooldown && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cool-Down</p>
+                                        <p className="text-xs text-gray-600 leading-snug">{existing.cooldown}</p>
+                                      </div>
+                                    )}
+                                    {ctText && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cross Training</p>
+                                        <p className="text-xs text-teal-600">{ctText}</p>
+                                      </div>
+                                    )}
+                                    {existing.notes && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Notes</p>
+                                        <p className="text-xs text-gray-500 leading-snug italic">{existing.notes}</p>
+                                      </div>
+                                    )}
+                                    {!existing.warmup && !existing.mainWorkout && !existing.cooldown && !ctText && !existing.notes && (
+                                      <p className="text-xs text-gray-400 italic">No details yet</p>
+                                    )}
+                                    <p className="text-[10px] text-gray-300 pt-1">tap to edit ✏️</p>
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              <div className="h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={isExpanded ? { minHeight: '60px' } : {}}>
                                 <span className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-base">+</span>
                               </div>
                             )}
