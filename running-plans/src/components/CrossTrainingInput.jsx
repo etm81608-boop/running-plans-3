@@ -23,6 +23,31 @@ const LIFT_OPTIONS = [
   ...STRENGTH_WORKOUTS.map((w) => w.title),
 ]
 
+// ── Exported constants / helpers ──────────────────────────────────────────────
+
+/** Empty cross-training value — use as form default */
+export const EMPTY_CT = { type: '', swimWorkoutId: '', liftOption: '', notes: '' }
+
+/**
+ * normaliseCT — converts any legacy crossTraining shape into the current
+ * { type, swimWorkoutId, liftOption, notes } format.
+ */
+export function normaliseCT(ct) {
+  if (!ct) return { ...EMPTY_CT }
+  // Already new format
+  if (ct.type !== undefined) {
+    return {
+      type:          ct.type          || '',
+      swimWorkoutId: ct.swimWorkoutId || '',
+      liftOption:    ct.liftOption    || '',
+      notes:         ct.notes         || '',
+    }
+  }
+  // Old boolean format: { swim: true, bike: true, ... }
+  const type = ct.swim ? 'swim' : ct.bike ? 'bike' : ct.walk ? 'walk' : ct.elliptical ? 'elliptical' : ''
+  return { type, swimWorkoutId: '', liftOption: '', notes: '' }
+}
+
 const CT_TYPES = [
   { value: 'swim',       label: 'Swim' },
   { value: 'bike',       label: 'Bike / Cycling' },
