@@ -1,108 +1,164 @@
-import { useMemo, useState } from 'react'
-import { useCollection } from '../hooks/useCollection'
-import { format } from 'date-fns'
+import { useEffect, useState, useMemo } from 'react'
+import { collection, getDocs, orderBy, query } from 'firebase/firestore'
+import { db } from '../firebase/config'
+import { format, parseISO } from 'date-fns'
 
-const RPE_LABELS = {
-  1: 'Very Easy', 2: 'Easy', 3: 'Moderate', 4: 'Somewhat Hard',
-  5: 'Hard', 6: 'Hard+', 7: 'Very Hard', 8: 'Very Hard+',
-  9: 'Max Effort', 10: 'All Out',
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toMillis(ts) {
+  if (!ts) return 0
+  if (typeof ts.toMillis === 'function') return ts.toMillis()
+  if (ts.seconds) return ts.seconds * 1000
+  return 0
 }
 
-function rpeColor(rpe) {
-  if (!rpe) return 'bg-gray-100 text-gray-500'
-  if (rpe <= 3) return 'bg-green-100 text-green-700'
-  if (rpe <= 5) return 'bg-yellow-100 text-yellow-700'
-  if (rpe <= 7) return 'bg-orange-100 text-orange-700'
-  return 'bg-red-100 text-red-700'
-}
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RunnerLogs() {
-  const { docs: logs,    loading: logsLoading }    = useCollection('workoutLogs',  'submittedAt')
-  const { docs: runners, loading: runnersLoading } = useCollection('runners',      'name')
+  const [allLogs,   setAllLogs]   = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [search,    setSearch]    = useState('')
+  const [dateFrom,  setDateFrom]  = useState('')
+  const [dateTo,    setDateTo]    = useState('')
 
-  const [filterRunner, setFilterRunner] = useState('')
-  const [search,       setSearch]       = useState('')
+  useEffect(() => {
+    async function load() {
+      const snap = await getDocs(
+        query(collection(db, 'workoutLogs'), orderBy('date', 'desc'))
+      )
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-  const sortedLogs = useMemo(() => {
-    return [...logs].sort((a, b) => {
-      // Sort by date descending
-      if (a.date > b.date) return -1
-      if (a.date < b.date) return  1
-      return 0
-    })
-  }, [logs])
+      // ── Keep only the latest log per assignmentId ──────────────────────────
+      const latestByAssignment = {}
+      docs.forEach((doc) => {
+        const key = doc.assignmentId || doc.id
+        const existing = latestByAssignment[key]
+        const docTime  = toMillis(doc.updatedAt) || toMillis(doc.submittedAt)
+        const prevTime = existing
+          ? toMillis(existing.updatedAt) || toMillis(existing.submittedAt)
+          : -1
+        if (!existing || docTime > prevTime) {
+          latestByAssignment[key] = doc
+        }
+      })
+
+      const deduped = Object.values(latestByAssignment)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      setAllLogs(deduped)
+      setLoading(false)
+    }
+    load()
+  }, [])
 
   const filtered = useMemo(() => {
-    return sortedLogs.filter((log) => {
-      if (filterRunner && log.runnerId !== filterRunner) return false
-      if (search) {
-        const q = search.toLowerCase()
-        return (
-          log.runnerName?.toLowerCase().includes(q) ||
-          log.actualActivity?.toLowerCase().includes(q) ||
-          log.notes?.toLowerCase().includes(q)
-        )
-      }
+    return allLogs.filter((log) => {
+      if (search && !log.runnerName?.toLowerCase().includes(search.toLowerCase())) return false
+      if (dateFrom && log.date < dateFrom) return false
+      if (dateTo   && log.date > dateTo)   return false
       return true
     })
-  }, [sortedLogs, filterRunner, search])
+  }, [allLogs, search, dateFrom, dateTo])
 
-  const loading = logsLoading || runnersLoading
+  // Group by date for display
+  const byDate = useMemo(() => {
+    const map = {}
+    filtered.forEach((log) => {
+      const d = log.date || 'Unknown'
+      if (!map[d]) map[d] = []
+      map[d].push(log)
+    })
+    // Sort runners within each day alphabetically
+    Object.values(map).forEach((arr) =>
+      arr.sort((a, b) => (a.runnerName || '').localeCompare(b.runnerName || ''))
+    )
+    return map
+  }, [filtered])
+
+  const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
 
   return (
-    <div className="p-8">
+    <div className="p-8 max-w-5xl">
+
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Runner Logs</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Activity logs submitted by your runners via their workout links.
+          All submitted workout logs · most recent edit shown per day
         </p>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5 flex-wrap">
-        <select
-          value={filterRunner}
-          onChange={(e) => setFilterRunner(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
-        >
-          <option value="">All runners</option>
-          {runners.map((r) => (
-            <option key={r.id} value={r.id}>{r.name}</option>
-          ))}
-        </select>
-
+      <div className="flex flex-wrap gap-3 mb-6">
         <input
           type="text"
-          placeholder="Search logs…"
+          placeholder="Search by runner name…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-400 flex-1 min-w-48"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-brand-400"
         />
-
-        <div className="flex items-center gap-2 ml-auto">
-          <span className="text-sm text-gray-500">
-            {filtered.length} log{filtered.length !== 1 ? 's' : ''}
-          </span>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+          />
         </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+          />
+        </div>
+        {(search || dateFrom || dateTo) && (
+          <button
+            onClick={() => { setSearch(''); setDateFrom(''); setDateTo('') }}
+            className="text-xs text-gray-400 hover:text-gray-700 font-semibold underline transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
+        <span className="ml-auto text-xs text-gray-400 self-center font-medium">
+          {filtered.length} log{filtered.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
       {/* Content */}
       {loading ? (
-        <div className="text-center py-16 text-gray-400">Loading…</div>
+        <div className="flex items-center gap-3 py-12 justify-center text-gray-400">
+          <div className="w-5 h-5 border-2 border-brand-300 border-t-brand-600 rounded-full animate-spin" />
+          Loading logs…
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <span className="text-5xl">📋</span>
-          <p className="mt-4 text-gray-500 font-medium">No logs yet</p>
-          <p className="text-sm text-gray-400 mt-1">
-            {logs.length === 0
-              ? 'Logs will appear here once runners submit their activity via workout links.'
-              : 'No logs match your current filter.'}
-          </p>
+        <div className="bg-white border border-gray-100 rounded-xl p-12 text-center text-gray-400">
+          No logs found.
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((log) => (
-            <LogCard key={log.id} log={log} />
+        <div className="space-y-8">
+          {sortedDates.map((dateStr) => (
+            <div key={dateStr}>
+              {/* Date header */}
+              <div className="flex items-center gap-3 mb-3">
+                <h2 className="text-sm font-black text-gray-700 uppercase tracking-wide">
+                  {dateStr !== 'Unknown'
+                    ? format(parseISO(dateStr + 'T12:00:00'), 'EEEE, MMMM d, yyyy')
+                    : 'Unknown Date'}
+                </h2>
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-xs text-gray-400">{byDate[dateStr].length} runner{byDate[dateStr].length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {/* Log cards for this date */}
+              <div className="space-y-3">
+                {byDate[dateStr].map((log) => (
+                  <LogCard key={log.id} log={log} />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -110,107 +166,102 @@ export default function RunnerLogs() {
   )
 }
 
+// ── Log Card ──────────────────────────────────────────────────────────────────
+
 function LogCard({ log }) {
   const [expanded, setExpanded] = useState(false)
-
-  const dateStr = log.date
-    ? format(new Date(log.date + 'T12:00:00'), 'EEE, MMM d, yyyy')
-    : '—'
-
-  const submittedStr = log.submittedAt?.toDate
-    ? format(log.submittedAt.toDate(), 'MMM d · h:mm a')
-    : null
+  const hasSplits  = log.splits && log.splits.length > 0
+  const hasExtras  = hasSplits || log.notes
+  const submittedAt = log.updatedAt || log.submittedAt
+  const wasEdited   = !!log.updatedAt
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Card header — always visible */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors"
-      >
-        {/* Runner initial bubble */}
-        <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-bold text-brand-700">
-            {log.runnerName?.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?'}
-          </span>
-        </div>
+    <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900">{log.runnerName || 'Unknown'}</span>
-            <span className="text-gray-400 text-sm">·</span>
-            <span className="text-sm text-gray-500">{dateStr}</span>
-            {log.rpe && (
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rpeColor(log.rpe)}`}>
-                RPE {log.rpe} — {RPE_LABELS[log.rpe]}
-              </span>
-            )}
+      {/* Top bar — runner + date stamp */}
+      <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 font-black text-xs flex-shrink-0">
+            {log.runnerName?.trim().split(/\s+/).map((w) => w[0]?.toUpperCase()).join('') || '?'}
           </div>
-          <p className="text-sm text-gray-600 mt-0.5 truncate">{log.actualActivity}</p>
+          <p className="font-bold text-gray-900 text-sm">{log.runnerName || 'Unknown Runner'}</p>
         </div>
-
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {(log.distance || log.duration) && (
-            <div className="text-right hidden sm:block">
-              {log.distance && <p className="text-xs font-medium text-gray-700">{log.distance}</p>}
-              {log.duration && <p className="text-xs text-gray-400">{log.duration}</p>}
-            </div>
+        <div className="text-right">
+          {submittedAt && (
+            <p className="text-xs text-gray-400">
+              {wasEdited ? '✏️ Edited' : 'Logged'}{' '}
+              {toMillis(submittedAt)
+                ? format(new Date(toMillis(submittedAt)), 'MMM d @ h:mm a')
+                : ''}
+            </p>
           )}
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className={`h-4 w-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
         </div>
-      </button>
+      </div>
 
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 space-y-3">
+      {/* Main body */}
+      <div className="px-5 py-4 space-y-3">
+
+        {/* Activity description */}
+        {log.actualActivity && (
+          <p className="text-sm text-gray-800 leading-relaxed">{log.actualActivity}</p>
+        )}
+
+        {/* Stats row */}
+        <div className="flex flex-wrap gap-4">
+          {log.distance && (
+            <Stat label="Distance" value={log.distance} />
+          )}
+          {log.duration && (
+            <Stat label="Time" value={log.duration} />
+          )}
+          {log.avgPace && (
+            <Stat label="Avg Pace" value={log.avgPace} />
+          )}
+          {log.avgHeartRate && (
+            <Stat label="Avg HR" value={log.avgHeartRate} />
+          )}
+          {log.rpe != null && log.rpe !== '' && (
+            <Stat label="Effort (RPE)" value={`${log.rpe} / 10`} accent />
+          )}
+        </div>
+
+        {/* Splits — always shown if present */}
+        {hasSplits && (
           <div>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">What they did</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.actualActivity}</p>
+            <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Splits</p>
+            <div className="flex flex-wrap gap-2">
+              {log.splits.map((split, i) => (
+                <div key={i} className="flex items-center gap-1.5 bg-brand-50 border border-brand-100 rounded-lg px-3 py-1">
+                  <span className="text-xs text-brand-400 font-semibold">Lap {i + 1}</span>
+                  <span className="text-sm font-black text-brand-700">{split}</span>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          {(log.distance || log.duration) && (
-            <div className="flex gap-6">
-              {log.distance && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Distance</p>
-                  <p className="text-sm text-gray-700">{log.distance}</p>
-                </div>
-              )}
-              {log.duration && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Time</p>
-                  <p className="text-sm text-gray-700">{log.duration}</p>
-                </div>
-              )}
-              {log.rpe && (
-                <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Effort</p>
-                  <span className={`text-sm font-semibold px-2 py-0.5 rounded-full ${rpeColor(log.rpe)}`}>
-                    {log.rpe}/10 — {RPE_LABELS[log.rpe]}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Notes */}
+        {log.notes && (
+          <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
+            <p className="text-xs font-black text-amber-600 uppercase tracking-widest mb-1">Notes for Coach</p>
+            <p className="text-sm text-gray-700 leading-relaxed">{log.notes}</p>
+          </div>
+        )}
 
-          {log.notes && (
-            <div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Runner notes</p>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.notes}</p>
-            </div>
-          )}
+        {/* Nothing logged */}
+        {!log.actualActivity && !log.distance && !log.avgPace && !log.rpe && !hasSplits && !log.notes && (
+          <p className="text-sm text-gray-400 italic">No details recorded.</p>
+        )}
+      </div>
+    </div>
+  )
+}
 
-          {submittedStr && (
-            <p className="text-xs text-gray-400 pt-1 border-t border-gray-200">Submitted {submittedStr}</p>
-          )}
-        </div>
-      )}
+function Stat({ label, value, accent = false }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className={`text-sm font-black ${accent ? 'text-brand-600' : 'text-gray-800'}`}>{value}</p>
     </div>
   )
 }
