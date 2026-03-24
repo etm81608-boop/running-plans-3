@@ -9,7 +9,7 @@ import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
-import CrossTrainingInput, { EMPTY_CT, normaliseCT, ctToText } from '../components/CrossTrainingInput'
+import CrossTrainingInput, { normaliseCT, ctToText } from '../components/CrossTrainingInput'
 import { WORKOUT_TYPES } from '../utils/constants'
 import useWeather from '../hooks/useWeather'
 import { format, parseISO } from 'date-fns'
@@ -22,7 +22,7 @@ const DRILL_OPTIONS = ['Cone / Wicket Drills', 'Hurdle Drills', 'Hip Drills']
 const EMPTY_FORM = {
   workoutType: '', workoutTitle: '', warmup: '', drills: '',
   additionalWarmup: '', mainWorkout: '', cooldown: '',
-  crossTraining: EMPTY_CT, notes: '',
+  crossTraining: [], notes: '',
 }
 
 const CALENDAR_COLORS = {
@@ -185,7 +185,7 @@ export default function CalendarPage() {
           workoutType: a.workoutType || '', workoutTitle: a.workoutTitle || '',
           warmup: a.warmup || '', drills: a.drills || '', additionalWarmup: a.additionalWarmup || '',
           mainWorkout: a.mainWorkout || '', cooldown: a.cooldown || '',
-          crossTraining: a.crossTraining || EMPTY_CT, notes: a.notes || '',
+          crossTraining: normaliseCT(a.crossTraining), notes: a.notes || '',
           assignmentIds: [a.id], runnerNames: [a.runnerName || 'Runner'],
         }
       } else {
