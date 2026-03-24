@@ -8,10 +8,16 @@ import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 import { format, addDays, startOfWeek, parseISO } from 'date-fns'
 import CrossTrainingInput, { EMPTY_CT, ctToText, normaliseCT } from '../components/CrossTrainingInput'
+import { WORKOUT_TYPES } from '../utils/constants'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MAX_RUNNERS = 6
+
+// Hide legacy 'rest' type from the selector
+const FORM_WORKOUT_TYPES = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
+
+const DRILL_OPTIONS = ['Cone / Wicket Drills', 'Hurdle Drills', 'Hip Drills']
 
 const VG_OPTIONS = [
   { value: '',  label: 'Off — private' },
@@ -32,7 +38,16 @@ const RUNNER_COLORS = [
 ]
 
 const EMPTY_FORM = {
-  warmup: '', mainWorkout: '', cooldown: '', crossTraining: EMPTY_CT, notes: '', visibilityGroup: '',
+  workoutType:      '',
+  workoutTitle:     '',
+  warmup:           '',
+  drills:           '',
+  additionalWarmup: '',
+  mainWorkout:      '',
+  cooldown:         '',
+  crossTraining:    EMPTY_CT,
+  notes:            '',
+  visibilityGroup:  '',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,6 +60,24 @@ function getInitials(name = '') {
   return name.trim().split(/\s+/).map((w) => w[0]?.toUpperCase() ?? '').join('')
 }
 
+// ── Card sub-component ────────────────────────────────────────────────────────
+
+function Card({ step, title, children }) {
+  return (
+    <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+          {step}
+        </span>
+        <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
+      </div>
+      <div className="space-y-2">
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function TeamGrid() {
@@ -52,7 +85,6 @@ export default function TeamGrid() {
   const { docs: assignments } = useCollection('assignments', 'date')
   const { docs: templates }   = useCollection('workouts',    'createdAt')
 
-  // Week navigation — Monday as anchor
   const [weekAnchor, setWeekAnchor] = useState(() => getMondayOf(new Date()))
 
   const weekDays = useMemo(() =>
@@ -64,7 +96,6 @@ export default function TeamGrid() {
   const nextWeek = () => setWeekAnchor((d) => addDays(d,  7))
   const goToday  = () => setWeekAnchor(getMondayOf(new Date()))
 
-  // Runner selection (up to MAX_RUNNERS)
   const [selectedIds, setSelectedIds] = useState([])
 
   function toggleRunner(id) {
@@ -75,13 +106,11 @@ export default function TeamGrid() {
     })
   }
 
-  // Ordered selected runners
   const selectedRunners = useMemo(
     () => selectedIds.map((id) => allRunners.find((r) => r.id === id)).filter(Boolean),
     [selectedIds, allRunners]
   )
 
-  // Build lookup: assignmentsByRunnerDate[runnerId][dateStr] = assignment
   const assignmentsByRunnerDate = useMemo(() => {
     const map = {}
     assignments.forEach((a) => {
@@ -92,8 +121,7 @@ export default function TeamGrid() {
     return map
   }, [assignments])
 
-  // Modal state
-  const [modal,      setModal]      = useState(null) // null | { runnerId, runnerName, date, existing }
+  const [modal,      setModal]      = useState(null)
   const [form,       setForm]       = useState(EMPTY_FORM)
   const [saving,     setSaving]     = useState(false)
   const [deleting,   setDeleting]   = useState(false)
@@ -105,12 +133,16 @@ export default function TeamGrid() {
     const existing = assignmentsByRunnerDate[runner.id]?.[dateStr] || null
     setModal({ runnerId: runner.id, runnerName: runner.name, date: dateStr, existing })
     setForm(existing ? {
-      warmup:          existing.warmup          || '',
-      mainWorkout:     existing.mainWorkout     || '',
-      cooldown:        existing.cooldown        || '',
-      crossTraining:   normaliseCT(existing.crossTraining),
-      notes:           existing.notes           || '',
-      visibilityGroup: existing.visibilityGroup ? String(existing.visibilityGroup) : '',
+      workoutType:      existing.workoutType      || '',
+      workoutTitle:     existing.workoutTitle     || '',
+      warmup:           existing.warmup           || '',
+      drills:           existing.drills           || '',
+      additionalWarmup: existing.additionalWarmup || '',
+      mainWorkout:      existing.mainWorkout      || '',
+      cooldown:         existing.cooldown         || '',
+      crossTraining:    normaliseCT(existing.crossTraining),
+      notes:            existing.notes            || '',
+      visibilityGroup:  existing.visibilityGroup ? String(existing.visibilityGroup) : '',
     } : EMPTY_FORM)
     setTemplateId('')
     setConfirmDel(false)
@@ -130,10 +162,12 @@ export default function TeamGrid() {
     const parts = [t.description?.trim(), t.mainSet?.trim(), t.targetPace?.trim() ? `Target pace: ${t.targetPace}` : ''].filter(Boolean)
     setForm((f) => ({
       ...f,
-      warmup:      t.warmup?.trim()    || f.warmup,
-      mainWorkout: parts.join('\n')    || f.mainWorkout,
-      cooldown:    t.cooldown?.trim()  || f.cooldown,
-      notes:       t.notes?.trim()     || f.notes,
+      workoutType:  t.workoutType?.trim()  || f.workoutType,
+      workoutTitle: t.title?.trim()        || f.workoutTitle,
+      warmup:       t.warmup?.trim()       || f.warmup,
+      mainWorkout:  parts.join('\n')       || f.mainWorkout,
+      cooldown:     t.cooldown?.trim()     || f.cooldown,
+      notes:        t.notes?.trim()        || f.notes,
     }))
   }
 
@@ -146,17 +180,20 @@ export default function TeamGrid() {
     setSaving(true)
     const dateStr = format(parseISO(modal.date + 'T12:00:00'), 'MMMM d, yyyy')
     const data = {
-      runnerId:        modal.runnerId,
-      runnerName:      modal.runnerName,
-      date:            modal.date,
+      runnerId:         modal.runnerId,
+      runnerName:       modal.runnerName,
+      date:             modal.date,
       dateStr,
-      warmup:          form.warmup.trim(),
-      mainWorkout:     form.mainWorkout.trim(),
-      cooldown:        form.cooldown.trim(),
-      crossTraining:   form.crossTraining,
-      notes:           form.notes.trim(),
-      visibilityGroup: form.visibilityGroup ? parseInt(form.visibilityGroup, 10) : null,
-      workoutTitle:    form.mainWorkout.trim().slice(0, 60) || 'Workout',
+      workoutType:      form.workoutType,
+      workoutTitle:     form.workoutTitle.trim() || form.mainWorkout.trim().slice(0, 60) || 'Workout',
+      warmup:           form.warmup.trim(),
+      drills:           form.drills,
+      additionalWarmup: form.additionalWarmup.trim(),
+      mainWorkout:      form.mainWorkout.trim(),
+      cooldown:         form.cooldown.trim(),
+      crossTraining:    form.crossTraining,
+      notes:            form.notes.trim(),
+      visibilityGroup:  form.visibilityGroup ? parseInt(form.visibilityGroup, 10) : null,
     }
     try {
       if (modal.existing) {
@@ -199,8 +236,6 @@ export default function TeamGrid() {
           <h1 className="text-2xl font-bold text-gray-900">Team Grid</h1>
           <p className="text-sm text-gray-500 mt-0.5">Plan the week for up to {MAX_RUNNERS} runners at once. Click any cell to add or edit a workout.</p>
         </div>
-
-        {/* Week navigation */}
         <div className="flex items-center gap-2">
           <button onClick={prevWeek} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -245,9 +280,7 @@ export default function TeamGrid() {
                       : 'bg-white border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-700'
                 }`}
               >
-                {isSelected && (
-                  <span className={`w-2 h-2 rounded-full ${color.bg}`} />
-                )}
+                {isSelected && <span className={`w-2 h-2 rounded-full ${color.bg}`} />}
                 {r.name}
                 {r.group && <span className="text-xs opacity-60">· {r.group}</span>}
               </button>
@@ -264,47 +297,29 @@ export default function TeamGrid() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] border-collapse">
-
-              {/* Day header row */}
               <thead>
                 <tr>
-                  {/* Runner name column header */}
                   <th className="w-40 min-w-[10rem] bg-gray-50 border-b border-r border-gray-100 px-4 py-3 text-left">
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Runner</span>
                   </th>
                   {weekDays.map((day) => {
-                    const dateStr  = day.toISOString().split('T')[0]
-                    const isToday  = dateStr === today
+                    const dateStr = day.toISOString().split('T')[0]
+                    const isToday = dateStr === today
                     return (
-                      <th
-                        key={dateStr}
-                        className={`border-b border-r border-gray-100 last:border-r-0 px-2 py-3 text-center ${
-                          isToday ? 'bg-brand-600' : 'bg-gray-50'
-                        }`}
-                      >
-                        <p className={`text-xs font-bold uppercase tracking-wide ${isToday ? 'text-white/80' : 'text-gray-400'}`}>
-                          {format(day, 'EEE')}
-                        </p>
-                        <p className={`text-lg font-bold leading-none mt-0.5 ${isToday ? 'text-white' : 'text-gray-700'}`}>
-                          {format(day, 'd')}
-                        </p>
-                        <p className={`text-xs mt-0.5 ${isToday ? 'text-white/70' : 'text-gray-400'}`}>
-                          {format(day, 'MMM')}
-                        </p>
+                      <th key={dateStr} className={`border-b border-r border-gray-100 last:border-r-0 px-2 py-3 text-center ${isToday ? 'bg-brand-600' : 'bg-gray-50'}`}>
+                        <p className={`text-xs font-bold uppercase tracking-wide ${isToday ? 'text-white/80' : 'text-gray-400'}`}>{format(day, 'EEE')}</p>
+                        <p className={`text-lg font-bold leading-none mt-0.5 ${isToday ? 'text-white' : 'text-gray-700'}`}>{format(day, 'd')}</p>
+                        <p className={`text-xs mt-0.5 ${isToday ? 'text-white/70' : 'text-gray-400'}`}>{format(day, 'MMM')}</p>
                       </th>
                     )
                   })}
                 </tr>
               </thead>
-
-              {/* Runner rows */}
               <tbody>
                 {selectedRunners.map((runner, runnerIdx) => {
                   const color = RUNNER_COLORS[runnerIdx % RUNNER_COLORS.length]
                   return (
                     <tr key={runner.id} className="group">
-
-                      {/* Runner name cell */}
                       <td className={`border-b border-r border-gray-100 px-4 py-3 align-top ${color.light}`}>
                         <div className="flex items-center gap-2">
                           <div className={`w-7 h-7 rounded-full ${color.bg} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
@@ -316,21 +331,18 @@ export default function TeamGrid() {
                           </div>
                         </div>
                       </td>
-
-                      {/* Day cells */}
                       {weekDays.map((day) => {
                         const dateStr  = day.toISOString().split('T')[0]
                         const existing = assignmentsByRunnerDate[runner.id]?.[dateStr]
                         const isPast   = dateStr < today
                         const isToday  = dateStr === today
-
                         return (
                           <td
                             key={dateStr}
                             onClick={() => openCell(runner, dateStr)}
-                            className={`border-b border-r border-gray-100 last:border-r-0 p-2 align-top cursor-pointer transition-colors min-h-[80px] ${
-                              isToday  ? 'bg-brand-50/40 hover:bg-brand-50'
-                              : isPast  ? 'bg-gray-50/60 hover:bg-gray-100/60'
+                            className={`border-b border-r border-gray-100 last:border-r-0 p-2 align-top cursor-pointer transition-colors ${
+                              isToday ? 'bg-brand-50/40 hover:bg-brand-50'
+                              : isPast ? 'bg-gray-50/60 hover:bg-gray-100/60'
                               : 'bg-white hover:bg-gray-50'
                             }`}
                             style={{ minHeight: '80px', height: '80px' }}
@@ -341,12 +353,14 @@ export default function TeamGrid() {
                                   <p className={`text-xs font-semibold leading-snug line-clamp-3 ${color.text}`}>
                                     {existing.mainWorkout.split('\n')[0]}
                                   </p>
+                                ) : existing.workoutType ? (
+                                  <p className={`text-xs font-semibold leading-snug ${color.text}`}>
+                                    {WORKOUT_TYPES.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
+                                  </p>
                                 ) : (
                                   <p className="text-xs text-gray-400 italic">Rest</p>
                                 )}
-                                <div className="mt-auto">
-                                  <span className="text-xs text-gray-300">✏️</span>
-                                </div>
+                                <div className="mt-auto"><span className="text-xs text-gray-300">✏️</span></div>
                               </div>
                             ) : (
                               <div className="h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -369,25 +383,23 @@ export default function TeamGrid() {
       <Modal
         isOpen={!!modal}
         onClose={closeModal}
-        title={modal
-          ? `${modal.existing ? 'Edit' : 'Add'} Workout — ${modal.runnerName}`
-          : ''}
+        title={modal ? `${modal.existing ? 'Edit' : 'Add'} Workout — ${modal.runnerName}` : ''}
         size="lg"
       >
         {modal && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500">
+          <div className="space-y-3">
+            <p className="text-sm text-gray-500 font-medium">
               {modal.date ? format(parseISO(modal.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}
             </p>
 
             {/* Template picker */}
             {templates.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Load from template <span className="text-gray-400 font-normal">(optional — fills fields below)</span>
+              <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+                <label className="block text-xs font-bold text-indigo-700 uppercase tracking-widest mb-1.5">
+                  Load from Template <span className="normal-case font-normal text-indigo-500">(optional)</span>
                 </label>
                 <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                   value={templateId}
                   onChange={(e) => applyTemplate(e.target.value)}
                 >
@@ -399,49 +411,106 @@ export default function TeamGrid() {
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Warm-Up</label>
+            {/* 1 — Workout Type & Title */}
+            <Card step="1" title="Workout Type & Title">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    value={form.workoutType}
+                    onChange={(e) => setField('workoutType', e.target.value)}
+                  >
+                    <option value="">— select type —</option>
+                    {FORM_WORKOUT_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Title <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    value={form.workoutTitle}
+                    onChange={(e) => setField('workoutTitle', e.target.value)}
+                    placeholder="e.g. Threshold Tuesday"
+                  />
+                </div>
+              </div>
+            </Card>
+
+            {/* 2 — Warm-Up */}
+            <Card step="2" title="Warm-Up">
               <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
                 value={form.warmup}
                 onChange={(e) => setField('warmup', e.target.value)}
-                placeholder="e.g. 10 min easy jog, drills"
+                placeholder="e.g. 10 min easy jog"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Main Workout</label>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Drills</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  value={form.drills}
+                  onChange={(e) => setField('drills', e.target.value)}
+                >
+                  <option value="">— none —</option>
+                  {DRILL_OPTIONS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Additional Warm-Up <span className="text-gray-400 font-normal">(optional)</span></label>
+                <textarea rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  value={form.additionalWarmup}
+                  onChange={(e) => setField('additionalWarmup', e.target.value)}
+                  placeholder="e.g. strides, hurdle mobility"
+                />
+              </div>
+            </Card>
+
+            {/* 3 — Main Workout */}
+            <Card step="3" title="Main Workout">
               <textarea rows={4}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
                 value={form.mainWorkout}
                 onChange={(e) => setField('mainWorkout', e.target.value)}
                 placeholder="e.g. 6 x 800m @ 5K pace, 90 sec rest"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cool-Down</label>
+            </Card>
+
+            {/* 4 — Cool-Down */}
+            <Card step="4" title="Cool-Down">
               <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
                 value={form.cooldown}
                 onChange={(e) => setField('cooldown', e.target.value)}
                 placeholder="e.g. 10 min easy, stretching"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">💪 Cross Training</label>
+            </Card>
+
+            {/* 5 — Cross Training */}
+            <Card step="5" title="Cross Training">
               <CrossTrainingInput
                 value={form.crossTraining}
                 onChange={(v) => setField('crossTraining', v)}
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            </Card>
+
+            {/* 6 — Coach Notes */}
+            <Card step="6" title="Coach Notes">
               <textarea rows={2}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
                 value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)}
-                placeholder="Coach notes for this athlete…"
+                placeholder="Notes visible to this athlete…"
               />
-            </div>
+            </Card>
+
+            {/* Peer Visibility Group */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Peer Visibility Group</label>
               <select
@@ -459,10 +528,7 @@ export default function TeamGrid() {
             <div className="flex items-center justify-between pt-2">
               <div>
                 {modal.existing && !confirmDel && (
-                  <button
-                    onClick={() => setConfirmDel(true)}
-                    className="text-sm text-red-500 hover:text-red-700 font-medium"
-                  >
+                  <button onClick={() => setConfirmDel(true)} className="text-sm text-red-500 hover:text-red-700 font-medium">
                     Delete workout
                   </button>
                 )}
@@ -472,9 +538,7 @@ export default function TeamGrid() {
                     <button onClick={handleDelete} disabled={deleting} className="text-sm text-red-600 font-semibold hover:text-red-800">
                       {deleting ? 'Deleting…' : 'Yes, delete'}
                     </button>
-                    <button onClick={() => setConfirmDel(false)} className="text-sm text-gray-500 hover:text-gray-700">
-                      Cancel
-                    </button>
+                    <button onClick={() => setConfirmDel(false)} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
                   </div>
                 )}
               </div>
