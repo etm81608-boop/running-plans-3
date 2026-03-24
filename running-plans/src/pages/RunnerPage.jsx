@@ -95,6 +95,7 @@ export default function RunnerPage() {
     try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]') } catch { return [] }
   })
   const [logOpenDate,      setLogOpenDate]      = useState(null)
+  const [detailDate,       setDetailDate]       = useState(null)
   const [showPastMeets,    setShowPastMeets]    = useState(false)
   const [profilePicUrl,    setProfilePicUrl]    = useState(null)
   const [uploading,        setUploading]        = useState(false)
@@ -510,7 +511,7 @@ export default function RunnerPage() {
                             {ctToText(a.crossTraining) && (
                               <div className="border-l-2 border-teal-400 pl-2 py-0.5 bg-teal-50 rounded-r-lg">
                                 <p className="text-xs font-bold text-teal-700">Cross</p>
-                                <p className="text-xs text-gray-600 leading-snug">{ctToText(a.crossTraining)}</p>
+                                <p className="text-xs text-gray-600 leading-snug line-clamp-2">{ctToText(a.crossTraining)}</p>
                               </div>
                             )}
                             {a.notes && (
@@ -521,6 +522,16 @@ export default function RunnerPage() {
                             )}
                             {!a.warmup && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && (
                               <p className="text-xs text-gray-300 text-center py-3 italic">Rest</p>
+                            )}
+
+                            {/* View full workout */}
+                            {(a.warmup || a.mainWorkout || a.cooldown || ctToText(a.crossTraining) || a.notes) && (
+                              <button
+                                onClick={() => setDetailDate(dateStr)}
+                                className="w-full text-xs text-rose-400 hover:text-rose-600 font-semibold py-1 transition-colors text-center"
+                              >
+                                View Full Workout ↗
+                              </button>
                             )}
 
                             {/* Partners */}
@@ -668,6 +679,23 @@ export default function RunnerPage() {
       <p className="text-center text-rose-300 text-xs py-8">
         Episcopal Academy Women's XC & Track · Newtown Square, PA
       </p>
+
+      {/* Workout detail modal */}
+      {detailDate && (() => {
+        const a = assignmentByDate[detailDate]
+        if (!a) return null
+        return (
+          <WorkoutDetailModal
+            assignment={a}
+            dayMeets={MEETS_BY_DATE[detailDate] || []}
+            partners={peersByDate[detailDate] || []}
+            onClose={() => setDetailDate(null)}
+            onLog={() => { setDetailDate(null); setLogOpenDate(detailDate) }}
+            isLogged={loggedIds.includes(a.id)}
+            onEdit={() => { setDetailDate(null); setLogOpenDate(detailDate) }}
+          />
+        )
+      })()}
 
       {/* Set-password modal */}
       {showSetPassword && (
@@ -1311,6 +1339,132 @@ function SetPasswordModal({ currentPassword, onSave, onCancel }) {
           </form>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Workout Detail Modal ───────────────────────────────────────────────────────
+
+function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog, isLogged, onEdit }) {
+  const d = parseISO(a.date + 'T12:00:00')
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-6">
+      <div className="w-full sm:max-w-lg bg-white sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-rose-200 via-pink-100 to-violet-200 px-6 py-4 flex items-start justify-between flex-shrink-0 border-b border-rose-200">
+          <div>
+            <p className="text-xs text-rose-400 font-semibold uppercase tracking-widest mb-0.5">
+              {format(d, 'EEEE')}
+            </p>
+            <p className="text-xl font-black text-rose-900">
+              {format(d, 'MMMM d, yyyy')}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-rose-400 hover:text-rose-700 transition-colors mt-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+          {/* Meet badges */}
+          {dayMeets.map((meet) => (
+            <div key={meet.id} className={`border-l-4 pl-4 py-2 rounded-r-xl ${
+              meet.championship ? 'border-amber-400 bg-amber-50' : 'border-rose-400 bg-rose-50'
+            }`}>
+              <p className={`font-black text-sm ${meet.championship ? 'text-amber-700' : 'text-rose-700'}`}>
+                {meet.championship ? '🏆 ' : '🏟️ '}{meet.name}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">📍 {meet.location}</p>
+              <p className="text-xs text-gray-500">{meet.home ? '🏠 Home' : '✈️ Away'}</p>
+            </div>
+          ))}
+
+          {/* Warm-Up */}
+          {a.warmup && (
+            <Section color="green" label="Warm-Up" text={a.warmup} />
+          )}
+
+          {/* Main Workout */}
+          {a.mainWorkout && (
+            <Section color="rose" label="Main Workout" text={a.mainWorkout} large />
+          )}
+
+          {/* Cool-Down */}
+          {a.cooldown && (
+            <Section color="sky" label="Cool-Down" text={a.cooldown} />
+          )}
+
+          {/* Cross Training */}
+          {ctToText(a.crossTraining) && (
+            <Section color="teal" label="Cross Training" text={ctToText(a.crossTraining)} />
+          )}
+
+          {/* Coach Notes */}
+          {a.notes && (
+            <Section color="amber" label="Notes from Coach" text={a.notes} />
+          )}
+
+          {/* Training partners */}
+          {partners.length > 0 && (
+            <div className="border border-violet-100 bg-violet-50 rounded-xl px-4 py-3">
+              <p className="text-xs font-black text-violet-500 uppercase tracking-widest mb-2">Training Partners</p>
+              <div className="flex flex-wrap gap-2">
+                {partners.map((p) => (
+                  <span key={p.id} className="text-xs bg-violet-100 text-violet-700 font-semibold px-2.5 py-1 rounded-full">
+                    {p.runnerName}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!a.warmup && !a.mainWorkout && !a.cooldown && !ctToText(a.crossTraining) && !a.notes && dayMeets.length === 0 && (
+            <p className="text-center text-gray-400 italic py-6">Rest day — nothing assigned.</p>
+          )}
+        </div>
+
+        {/* Footer — log / edit button */}
+        <div className="px-6 py-4 border-t border-rose-100 flex-shrink-0 bg-pink-50">
+          {isLogged ? (
+            <button
+              onClick={onEdit}
+              className="w-full border-2 border-rose-300 text-rose-500 py-3 rounded-xl text-sm font-black uppercase tracking-wide hover:bg-rose-50 transition-colors"
+            >
+              ✏️ Edit My Log
+            </button>
+          ) : (
+            <button
+              onClick={onLog}
+              className="w-full bg-emerald-400 hover:bg-emerald-500 text-white py-3 rounded-xl text-sm font-black uppercase tracking-wide transition-colors"
+            >
+              Log This Workout
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Section({ color, label, text, large = false }) {
+  const colors = {
+    green: { border: 'border-green-400', bg: 'bg-green-50', label: 'text-green-700', text: 'text-gray-700' },
+    rose:  { border: 'border-rose-500',  bg: 'bg-rose-50',  label: 'text-rose-700',  text: 'text-gray-800' },
+    sky:   { border: 'border-sky-400',   bg: 'bg-sky-50',   label: 'text-sky-700',   text: 'text-gray-700' },
+    teal:  { border: 'border-teal-400',  bg: 'bg-teal-50',  label: 'text-teal-700',  text: 'text-gray-700' },
+    amber: { border: 'border-amber-400', bg: 'bg-amber-50', label: 'text-amber-700', text: 'text-gray-700' },
+  }
+  const c = colors[color]
+  return (
+    <div className={`border-l-4 ${c.border} ${c.bg} pl-4 pr-3 py-3 rounded-r-xl`}>
+      <p className={`text-xs font-black uppercase tracking-widest ${c.label} mb-1`}>{label}</p>
+      <p className={`${large ? 'text-sm' : 'text-xs'} ${c.text} leading-relaxed whitespace-pre-wrap`}>{text}</p>
     </div>
   )
 }
