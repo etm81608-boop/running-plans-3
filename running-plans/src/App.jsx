@@ -10,13 +10,7 @@ import Groups from './pages/Groups'
 import CalendarPage from './pages/CalendarPage'
 import AssignWorkout from './pages/AssignWorkout'
 import PublicWorkout from './pages/PublicWorkout'
-import RunnerPage from './pages/RunnerPage'
 import RunnerLogs from './pages/RunnerLogs'
-import DataExport from './pages/DataExport'
-import Meets from './pages/Meets'
-import TeamGrid from './pages/TeamGrid'
-import SwimWorkouts from './pages/SwimWorkouts'
-import StrengthWorkouts from './pages/StrengthWorkouts'
 
 export default function App() {
   return (
@@ -25,7 +19,6 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/workout/:assignmentId" element={<PublicWorkout />} />
-          <Route path="/runner/:runnerId" element={<RunnerPage />} />
           <Route
             path="/"
             element={
@@ -41,11 +34,6 @@ export default function App() {
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="assign" element={<AssignWorkout />} />
             <Route path="logs" element={<RunnerLogs />} />
-            <Route path="export" element={<DataExport />} />
-            <Route path="meets" element={<Meets />} />
-            <Route path="team-grid" element={<TeamGrid />} />
-            <Route path="swim-workouts" element={<SwimWorkouts />} />
-            <Route path="strength-workouts" element={<StrengthWorkouts />} />
           </Route>
         </Routes>
       </AuthProvider>
