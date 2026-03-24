@@ -9,6 +9,7 @@ import Toast from '../components/Toast'
 import { format, addDays, startOfWeek, parseISO } from 'date-fns'
 import CrossTrainingInput, { EMPTY_CT, ctToText, normaliseCT } from '../components/CrossTrainingInput'
 import { WORKOUT_TYPES } from '../utils/constants'
+import useWeather from '../hooks/useWeather'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,11 @@ export default function TeamGrid() {
   const prevWeek = () => setWeekAnchor((d) => addDays(d, -7))
   const nextWeek = () => setWeekAnchor((d) => addDays(d,  7))
   const goToday  = () => setWeekAnchor(getMondayOf(new Date()))
+
+  // Weather for the visible week
+  const wxStart = weekDays[0]?.toISOString().split('T')[0] ?? null
+  const wxEnd   = weekDays[6]?.toISOString().split('T')[0] ?? null
+  const weatherByDate = useWeather(wxStart, wxEnd)
 
   const [selectedIds, setSelectedIds] = useState([])
 
@@ -310,6 +316,14 @@ export default function TeamGrid() {
                         <p className={`text-xs font-bold uppercase tracking-wide ${isToday ? 'text-white/80' : 'text-gray-400'}`}>{format(day, 'EEE')}</p>
                         <p className={`text-lg font-bold leading-none mt-0.5 ${isToday ? 'text-white' : 'text-gray-700'}`}>{format(day, 'd')}</p>
                         <p className={`text-xs mt-0.5 ${isToday ? 'text-white/70' : 'text-gray-400'}`}>{format(day, 'MMM')}</p>
+                        {weatherByDate[dateStr] && (
+                          <p className={`text-[10px] mt-1 leading-tight ${isToday ? 'text-white/80' : 'text-gray-500'}`}>
+                            {weatherByDate[dateStr].icon} {weatherByDate[dateStr].high}°/{weatherByDate[dateStr].low}°
+                            {weatherByDate[dateStr].precipPct != null && weatherByDate[dateStr].precipPct >= 20 && (
+                              <span className={isToday ? 'text-blue-200' : 'text-blue-500'}> · {weatherByDate[dateStr].precipPct}%</span>
+                            )}
+                          </p>
+                        )}
                       </th>
                     )
                   })}
