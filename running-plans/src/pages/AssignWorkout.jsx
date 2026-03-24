@@ -19,7 +19,7 @@ const DRILL_OPTIONS = [
 // Exclude legacy 'rest' from the type picker
 const TYPE_OPTIONS = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
 
-const EMPTY_XT = { type: '', swimWorkoutId: '', liftOption: '', notes: '' }
+const EMPTY_XT = []
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ export default function AssignWorkout() {
     const dateStr     = format(new Date(date + 'T12:00:00'), 'MMMM d, yyyy')
     const typeObj     = WORKOUT_TYPES.find((t) => t.value === workoutType)
     const autoTitle   = workoutTitle.trim() || `${typeObj?.label ?? workoutType} — ${dateStr}`
-    const xtData      = crossTraining.type ? crossTraining : null
+    const xtData      = (Array.isArray(crossTraining) && crossTraining.length > 0) ? crossTraining : null
 
     try {
       let firstDocId = null
@@ -376,8 +376,8 @@ export default function AssignWorkout() {
               </p>
               <p>📅 {date ? format(new Date(date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}</p>
               <p>👥 {recipients.length} runner{recipients.length !== 1 ? 's' : ''}</p>
-              {crossTraining.type && (
-                <p>🏊 Cross training: {crossTraining.type}</p>
+              {(Array.isArray(crossTraining) && crossTraining.length > 0) && (
+                <p>🏊 Cross training: {crossTraining.map(c => c.type).filter(Boolean).join(', ')}</p>
               )}
             </div>
           </div>
