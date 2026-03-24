@@ -2,63 +2,62 @@ import { useState, useMemo } from 'react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
+import { sendWorkoutEmail } from '../utils/emailService'
 import Toast from '../components/Toast'
-import { WORKOUT_TYPES, getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
+import { WORKOUT_TYPES, LIFT_OPTIONS, getWorkoutTypeLabel, getWorkoutTypeColor } from '../utils/constants'
+import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
 import { format } from 'date-fns'
-import CrossTrainingInput, { EMPTY_CT } from '../components/CrossTrainingInput'
 
-const EMPTY_CUSTOM = {
-  title: '', type: 'easy', description: '',
-  warmup: '', mainSet: '', cooldown: '', targetPace: '', notes: '',
-}
+// Combine the general lift options with strength workout titles from the strength page
+const ALL_LIFT_OPTIONS = [
+  ...LIFT_OPTIONS,
+  ...STRENGTH_WORKOUTS.map((w) => w.title),
+]
 
-// Map workout library fields → assignment fields that CalendarPage / RunnerPage expect
-function buildAssignmentFields(workoutDoc, assignmentNotes) {
-  const parts = [
-    workoutDoc.description?.trim(),
-    workoutDoc.mainSet?.trim(),
-    workoutDoc.targetPace?.trim() ? `Target pace: ${workoutDoc.targetPace.trim()}` : '',
-  ].filter(Boolean)
+const CROSS_TRAINING_TYPES = [
+  { value: 'swim',       label: 'Swim' },
+  { value: 'bike',       label: 'Bike / Cycling' },
+  { value: 'walk',       label: 'Walk' },
+  { value: 'elliptical', label: 'Elliptical' },
+  { value: 'lift',       label: 'Lift' },
+]
 
-  const noteParts = [
-    workoutDoc.notes?.trim(),
-    assignmentNotes?.trim(),
-  ].filter(Boolean)
+// Workout types available for assignment (exclude legacy 'rest')
+const ASSIGN_WORKOUT_TYPES = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
 
-  return {
-    warmup:        workoutDoc.warmup?.trim()    || '',
-    mainWorkout:   parts.join('\n')             || '',
-    cooldown:      workoutDoc.cooldown?.trim()  || '',
-    crossTraining: '',
-    notes:         noteParts.join('\n\n')       || '',
-  }
-}
+const EMPTY_XT = { type: '', liftOption: '', notes: '' }
 
 export default function AssignWorkout() {
   const { docs: workouts } = useCollection('workouts', 'createdAt')
   const { docs: runners }  = useCollection('runners',  'name')
   const { docs: groups }   = useCollection('groups',   'name')
 
-  // Step 1: workout source
-  const [workoutMode,     setWorkoutMode]     = useState('library') // 'library' | 'custom'
+  // Step 1: workout
   const [selectedWorkout, setSelectedWorkout] = useState(null)
-  const [customWorkout,   setCustomWorkout]   = useState(EMPTY_CUSTOM)
-  const [saveToLibrary,   setSaveToLibrary]   = useState(false)
-
   // Step 2: date
   const [date, setDate] = useState('')
-
   // Step 3: recipients
-  const [mode,             setMode]             = useState('group')
-  const [selectedGroup,    setSelectedGroup]    = useState('')
-  const [selectedRunners,  setSelectedRunners]  = useState([])
+  const [mode, setMode]                       = useState('group')
+  const [selectedGroup, setSelectedGroup]     = useState('')
+  const [selectedRunners, setSelectedRunners] = useState([])
+  // Step 4: cross training (optional)
+  const [crossTraining, setCrossTraining]     = useState(EMPTY_XT)
+  // Step 5: notes + delivery
+  const [notes,     setNotes]     = useState('')
+  const [sendEmail, setSendEmail] = useState(false)
 
-  // Step 4: notes + cross training
-  const [notes,          setNotes]          = useState('')
-  const [crossTraining,  setCrossTraining]  = useState(EMPTY_CT)
+  const [saving,    setSaving]    = useState(false)
+  const [toast,     setToast]     = useState(null)
+  const [shareLink, setShareLink] = useState('')
 
-  const [saving,  setSaving]  = useState(false)
-  const [toast,   setToast]   = useState(null)
+  // Workout type filter for library
+  const [typeFilter, setTypeFilter] = useState('all')
+
+  // Filtered workouts in library
+  const filteredWorkouts = useMemo(() => {
+    if (typeFilter === 'all') return workouts
+    return workouts.filter((w) => w.type === typeFilter)
+  }, [workouts, typeFilter])
 
   // Derived recipient list
   const recipients = useMemo(() => {
@@ -74,84 +73,72 @@ export default function AssignWorkout() {
     )
   }
 
-  function setCustomField(field, value) {
-    setCustomWorkout((prev) => ({ ...prev, [field]: value }))
+  function setCt(field, value) {
+    setCrossTraining((prev) => ({ ...prev, [field]: value }))
   }
 
-  // The "active" workout for the summary
-  const activeWorkout = workoutMode === 'library'
-    ? selectedWorkout
-    : customWorkout.title.trim()
-      ? { ...customWorkout, title: customWorkout.title.trim() }
-      : null
-
-  const canAssign = activeWorkout && date && recipients.length > 0
-
   async function handleAssign() {
-    if (!activeWorkout || !date || recipients.length === 0) return
+    if (!selectedWorkout || !date || recipients.length === 0) return
     setSaving(true)
 
     const dateStr = format(new Date(date + 'T12:00:00'), 'MMMM d, yyyy')
 
     try {
-      let workoutDoc = activeWorkout
+      const xtData = crossTraining.type
+        ? {
+            type:       crossTraining.type,
+            liftOption: crossTraining.type === 'lift' ? crossTraining.liftOption : '',
+            notes:      crossTraining.type !== 'lift' ? crossTraining.notes : '',
+          }
+        : null
 
-      // If custom, optionally save to library
-      if (workoutMode === 'custom') {
-        const workoutData = {
-          title:       customWorkout.title.trim(),
-          type:        customWorkout.type,
-          description: customWorkout.description.trim(),
-          warmup:      customWorkout.warmup.trim(),
-          mainSet:     customWorkout.mainSet.trim(),
-          cooldown:    customWorkout.cooldown.trim(),
-          targetPace:  customWorkout.targetPace.trim(),
-          notes:       customWorkout.notes.trim(),
-        }
-        if (saveToLibrary) {
-          const ref = await addDoc(collection(db, 'workouts'), { ...workoutData, createdAt: serverTimestamp() })
-          workoutDoc = { ...workoutData, id: ref.id }
-        } else {
-          workoutDoc = { ...workoutData, id: `custom_${Date.now()}` }
-        }
+      const assignmentData = {
+        workoutId:    selectedWorkout.id,
+        workoutTitle: selectedWorkout.title,
+        workoutType:  selectedWorkout.type,
+        workoutData:  selectedWorkout,
+        date,
+        dateStr,
+        runnerIds:    recipients.map((r) => r.id),
+        runnerNames:  recipients.map((r) => r.name),
+        groupName:    mode === 'group' ? selectedGroup : mode === 'all' ? 'All Runners' : '',
+        crossTraining: xtData,
+        notes,
+        createdAt: serverTimestamp(),
       }
 
-      // Build the workout fields in the format CalendarPage / RunnerPage expect
-      const wktFields = { ...buildAssignmentFields(workoutDoc, notes), crossTraining }
+      const docRef = await addDoc(collection(db, 'assignments'), assignmentData)
 
-      // Create ONE assignment document per runner
-      const promises = recipients.map((runner) =>
-        addDoc(collection(db, 'assignments'), {
-          runnerId:        runner.id,
-          runnerName:      runner.name,
-          date,
-          dateStr,
-          ...wktFields,
-          visibilityGroup: runner.visibilityGroup ?? null,
-          workoutId:       workoutDoc.id,
-          workoutTitle: workoutDoc.title,
-          workoutType:  workoutDoc.type,
-          workoutData:  workoutDoc,
-          createdAt:    serverTimestamp(),
-        })
-      )
+      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
+      setShareLink(`${appUrl}/#/workout/${docRef.id}`)
 
-      await Promise.all(promises)
-
-      setToast({
-        message: `Assigned to ${recipients.length} runner${recipients.length !== 1 ? 's' : ''}${saveToLibrary && workoutMode === 'custom' ? ' — workout saved to library' : ''}!`,
-        type: 'success',
-      })
+      if (sendEmail) {
+        const emailRunners = recipients.filter((r) => r.email)
+        let emailErrors = 0
+        for (const runner of emailRunners) {
+          try {
+            await sendWorkoutEmail(runner, selectedWorkout, docRef.id, dateStr, notes)
+          } catch {
+            emailErrors++
+          }
+        }
+        if (emailErrors > 0) {
+          setToast({ message: `Assignment saved. ${emailErrors} email(s) failed — check EmailJS config.`, type: 'info' })
+        } else {
+          setToast({ message: `Assignment saved and emails sent to ${emailRunners.length} runner(s)!`, type: 'success' })
+        }
+      } else {
+        setToast({ message: 'Workout assigned successfully!', type: 'success' })
+      }
 
       // Reset form
       setSelectedWorkout(null)
-      setCustomWorkout(EMPTY_CUSTOM)
-      setSaveToLibrary(false)
       setDate('')
       setNotes('')
-      setCrossTraining(EMPTY_CT)
       setSelectedRunners([])
       setSelectedGroup('')
+      setSendEmail(false)
+      setCrossTraining(EMPTY_XT)
 
     } catch (err) {
       setToast({ message: 'Error: ' + err.message, type: 'error' })
@@ -160,158 +147,61 @@ export default function AssignWorkout() {
     }
   }
 
+  const canAssign = selectedWorkout && date && recipients.length > 0
+
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Assign Workout</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Choose a workout, date, and runners. Each runner's assignment will appear on the master calendar and their personal schedule.
-        </p>
+        <p className="text-sm text-gray-500 mt-0.5">Choose a workout, date, and runners — then send or share.</p>
       </div>
 
       <div className="space-y-6">
 
         {/* Step 1: Workout */}
         <Section step="1" title="Choose a Workout">
-
-          {/* Toggle: Library vs Custom */}
-          <div className="flex gap-2 mb-5">
+          {/* Type filter chips */}
+          <div className="flex flex-wrap gap-1.5 mb-4">
             <button
-              onClick={() => { setWorkoutMode('library'); setSelectedWorkout(null) }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                workoutMode === 'library' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              onClick={() => setTypeFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${typeFilter === 'all' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
-              From Library
+              All
             </button>
-            <button
-              onClick={() => { setWorkoutMode('custom'); setSelectedWorkout(null) }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                workoutMode === 'custom' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              + Create Custom
-            </button>
+            {ASSIGN_WORKOUT_TYPES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTypeFilter(t.value)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${typeFilter === t.value ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
-          {/* Library picker */}
-          {workoutMode === 'library' && (
-            workouts.length === 0 ? (
-              <p className="text-sm text-gray-400">No workouts yet. Use "Create Custom" or build your library first.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {workouts.map((w) => (
-                  <button
-                    key={w.id}
-                    onClick={() => setSelectedWorkout(w)}
-                    className={`text-left p-4 rounded-xl border-2 transition-colors ${
-                      selectedWorkout?.id === w.id
-                        ? 'border-brand-500 bg-brand-50'
-                        : 'border-gray-200 hover:border-brand-200 bg-white'
-                    }`}
-                  >
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getWorkoutTypeColor(w.type)}`}>
-                      {getWorkoutTypeLabel(w.type)}
-                    </span>
-                    <p className="font-medium text-gray-900 mt-1">{w.title}</p>
-                    {w.description && (
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{w.description}</p>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )
-          )}
-
-          {/* Custom workout builder */}
-          {workoutMode === 'custom' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-                  <input
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-                    value={customWorkout.title}
-                    onChange={(e) => setCustomField('title', e.target.value)}
-                    placeholder="e.g. Tuesday Tempo 4 miles"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                  <select
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-                    value={customWorkout.type}
-                    onChange={(e) => setCustomField('type', e.target.value)}
-                  >
-                    {WORKOUT_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Pace / Time</label>
-                  <input
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-                    value={customWorkout.targetPace}
-                    onChange={(e) => setCustomField('targetPace', e.target.value)}
-                    placeholder="e.g. 7:30/mile"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Overview / Description</label>
-                <textarea rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                  value={customWorkout.description}
-                  onChange={(e) => setCustomField('description', e.target.value)}
-                  placeholder="Brief overview of the session…"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Warm-Up</label>
-                <textarea rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                  value={customWorkout.warmup}
-                  onChange={(e) => setCustomField('warmup', e.target.value)}
-                  placeholder="e.g. 10 min easy jog, dynamic drills"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Main Set</label>
-                <textarea rows={4}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                  value={customWorkout.mainSet}
-                  onChange={(e) => setCustomField('mainSet', e.target.value)}
-                  placeholder="e.g. 6 x 800m @ 5K pace, 90 sec rest between each"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cool-Down</label>
-                <textarea rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                  value={customWorkout.cooldown}
-                  onChange={(e) => setCustomField('cooldown', e.target.value)}
-                  placeholder="e.g. 10 min easy jog, stretching"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Coach Notes</label>
-                <textarea rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                  value={customWorkout.notes}
-                  onChange={(e) => setCustomField('notes', e.target.value)}
-                  placeholder="Any additional notes for athletes…"
-                />
-              </div>
-              <label className="flex items-center gap-3 cursor-pointer pt-1">
-                <input
-                  type="checkbox"
-                  checked={saveToLibrary}
-                  onChange={(e) => setSaveToLibrary(e.target.checked)}
-                  className="w-4 h-4 text-brand-600 rounded"
-                />
-                <span className="text-sm text-gray-700">Also save this workout to my library for future use</span>
-              </label>
+          {filteredWorkouts.length === 0 ? (
+            <p className="text-sm text-gray-400">No workouts match. Build your library first.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filteredWorkouts.map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => setSelectedWorkout(w)}
+                  className={`text-left p-4 rounded-xl border-2 transition-colors ${
+                    selectedWorkout?.id === w.id
+                      ? 'border-brand-500 bg-brand-50'
+                      : 'border-gray-200 hover:border-brand-200 bg-white'
+                  }`}
+                >
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getWorkoutTypeColor(w.type)}`}>
+                    {getWorkoutTypeLabel(w.type)}
+                  </span>
+                  <p className="font-medium text-gray-900 mt-1">{w.title}</p>
+                  {w.description && (
+                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{w.description}</p>
+                  )}
+                </button>
+              ))}
             </div>
           )}
         </Section>
@@ -392,25 +282,90 @@ export default function AssignWorkout() {
           )}
         </Section>
 
-        {/* Step 4: Notes + Cross Training */}
-        <Section step="4" title="Notes &amp; Cross Training">
+        {/* Step 4: Cross Training (optional) */}
+        <Section step="4" title="Cross Training">
+          <p className="text-xs text-gray-400 mb-3">Optional — add any supplemental cross training for this day.</p>
+          <div className="space-y-3">
+
+            {/* Cross training type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <select
+                value={crossTraining.type}
+                onChange={(e) => setCrossTraining({ type: e.target.value, liftOption: '', notes: '' })}
+                className="w-full sm:w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              >
+                <option value="">— none —</option>
+                {CROSS_TRAINING_TYPES.map((ct) => (
+                  <option key={ct.value} value={ct.value}>{ct.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Lift sub-selector */}
+            {crossTraining.type === 'lift' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lift Type</label>
+                <select
+                  value={crossTraining.liftOption}
+                  onChange={(e) => setCt('liftOption', e.target.value)}
+                  className="w-full sm:w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                >
+                  <option value="">— choose lift —</option>
+                  {ALL_LIFT_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Notes for non-lift cross training */}
+            {crossTraining.type && crossTraining.type !== 'lift' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration / Notes</label>
+                <input
+                  type="text"
+                  value={crossTraining.notes}
+                  onChange={(e) => setCt('notes', e.target.value)}
+                  placeholder="e.g. 30 min easy"
+                  className="w-full sm:w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+                />
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* Step 5: Notes + Delivery */}
+        <Section step="5" title="Notes &amp; Delivery">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Assignment Notes <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <textarea
-                rows={2}
+                rows={3}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Any specific notes for this workout on this date…"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">💪 Cross Training</label>
-              <CrossTrainingInput value={crossTraining} onChange={setCrossTraining} />
-            </div>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendEmail}
+                onChange={(e) => setSendEmail(e.target.checked)}
+                className="w-4 h-4 text-brand-600 rounded"
+              />
+              <span className="text-sm text-gray-700">
+                Send workout via email to runners with email addresses
+              </span>
+            </label>
+            {sendEmail && (
+              <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                Requires EmailJS to be configured in your .env file. See README for setup instructions.
+              </p>
+            )}
           </div>
         </Section>
 
@@ -419,10 +374,19 @@ export default function AssignWorkout() {
           <div className="bg-brand-50 border border-brand-200 rounded-xl p-5">
             <p className="text-sm font-semibold text-brand-800 mb-2">Assignment Summary</p>
             <ul className="text-sm text-brand-700 space-y-1">
-              <li><strong>Workout:</strong> {activeWorkout?.title}</li>
+              <li><strong>Workout:</strong> {selectedWorkout?.title}</li>
               <li><strong>Date:</strong> {date ? format(new Date(date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}</li>
-              <li><strong>Recipients:</strong> {recipients.length} runner{recipients.length !== 1 ? 's' : ''} — {recipients.map((r) => r.name).join(', ')}</li>
-              {workoutMode === 'custom' && saveToLibrary && <li><strong>Library:</strong> Will be saved to your workout library</li>}
+              <li><strong>Recipients:</strong> {recipients.length} runner{recipients.length !== 1 ? 's' : ''}</li>
+              {crossTraining.type && (
+                <li>
+                  <strong>Cross Training:</strong>{' '}
+                  {crossTraining.type === 'lift' && crossTraining.liftOption
+                    ? `Lift — ${crossTraining.liftOption}`
+                    : crossTraining.type}
+                  {crossTraining.notes && ` · ${crossTraining.notes}`}
+                </li>
+              )}
+              {sendEmail && <li><strong>Emails:</strong> {recipients.filter((r) => r.email).length} will be sent</li>}
             </ul>
           </div>
         )}
@@ -432,9 +396,28 @@ export default function AssignWorkout() {
           disabled={!canAssign || saving}
           className="w-full bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {saving ? 'Saving…' : `Assign to ${recipients.length} Runner${recipients.length !== 1 ? 's' : ''}`}
+          {saving ? 'Saving…' : 'Assign Workout'}
         </button>
 
+        {/* Share link */}
+        {shareLink && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">Shareable link for last assignment:</p>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={shareLink}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs bg-gray-50 text-gray-600 font-mono"
+              />
+              <button
+                onClick={() => { navigator.clipboard.writeText(shareLink); setToast({ message: 'Link copied!', type: 'success' }) }}
+                className="bg-brand-600 hover:bg-brand-700 text-white px-3 py-2 rounded-lg text-xs font-medium"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
