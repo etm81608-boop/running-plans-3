@@ -4,14 +4,20 @@ import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import { sendWorkoutEmail } from '../utils/emailService'
 import Toast from '../components/Toast'
-import { WORKOUT_TYPES, LIFT_OPTIONS, getWorkoutTypeLabel, getWorkoutTypeColor } from '../utils/constants'
-import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
+import { WORKOUT_TYPES, getWorkoutTypeLabel, getWorkoutTypeColor } from '../utils/constants'
 import { format } from 'date-fns'
 
-// Combine the general lift options with strength workout titles from the strength page
+// Lift sub-options: general categories + Harvard strength workout slots
+// (Add or edit these to match the names on your Strength page)
 const ALL_LIFT_OPTIONS = [
-  ...LIFT_OPTIONS,
-  ...STRENGTH_WORKOUTS.map((w) => w.title),
+  'Mobility',
+  'Heavy Lift',
+  'Light Lift',
+  'Body Weight',
+  'Strength Workout A',
+  'Strength Workout B',
+  'Strength Workout C',
+  'Strength Workout D',
 ]
 
 const CROSS_TRAINING_TYPES = [
@@ -22,7 +28,7 @@ const CROSS_TRAINING_TYPES = [
   { value: 'lift',       label: 'Lift' },
 ]
 
-// Workout types available for assignment (exclude legacy 'rest')
+// Workout types for the filter chips (exclude legacy 'rest')
 const ASSIGN_WORKOUT_TYPES = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
 
 const EMPTY_XT = { type: '', liftOption: '', notes: '' }
