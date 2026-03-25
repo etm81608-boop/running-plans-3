@@ -12,7 +12,7 @@ import Toast from '../components/Toast'
 import CrossTrainingInput, { normaliseCT, ctToText } from '../components/CrossTrainingInput'
 import { WORKOUT_TYPES } from '../utils/constants'
 import useWeather from '../hooks/useWeather'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, addDays, startOfWeek } from 'date-fns'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -46,30 +46,269 @@ function Card({ step, title, children }) {
   )
 }
 
-// ── Print View ────────────────────────────────────────────────────────────────
+// ── Print helpers ─────────────────────────────────────────────────────────────
 
-function PrintView({ grouped }) {
+function getMondayOf(d) { return startOfWeek(d, { weekStartsOn: 1 }) }
+
+// ── Single workout block (used inside print grid cell) ────────────────────────
+
+function WorkoutBlock({ g }) {
+  const ctText = ctToText(g.crossTraining)
+  const typeLabel = WORKOUT_TYPES.find(t => t.value === g.workoutType)?.label
+  return (
+    <div style={{
+      border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px 10px',
+      marginBottom: '6px', backgroundColor: '#fff', pageBreakInside: 'avoid',
+      fontSize: '11px', lineHeight: '1.4',
+    }}>
+      {/* Type badge + title */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px', flexWrap: 'wrap' }}>
+        {typeLabel && (
+          <span style={{
+            fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em',
+            backgroundColor: '#e0e7ff', color: '#3730a3', padding: '1px 6px', borderRadius: '999px',
+          }}>{typeLabel}</span>
+        )}
+        {g.workoutTitle && (
+          <span style={{ fontWeight: '700', color: '#111827', fontSize: '11px' }}>{g.workoutTitle}</span>
+        )}
+      </div>
+      {/* Workout fields */}
+      {g.warmup && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Warm-Up </span>
+          <span style={{ color: '#374151' }}>{g.warmup}</span>
+        </div>
+      )}
+      {g.drills && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Drills </span>
+          <span style={{ color: '#374151' }}>{g.drills}</span>
+        </div>
+      )}
+      {g.additionalWarmup && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add'l Warm-Up </span>
+          <span style={{ color: '#374151' }}>{g.additionalWarmup}</span>
+        </div>
+      )}
+      {g.mainWorkout && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Main </span>
+          <span style={{ color: '#111827', fontWeight: '500' }}>{g.mainWorkout}</span>
+        </div>
+      )}
+      {g.cooldown && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cool-Down </span>
+          <span style={{ color: '#374151' }}>{g.cooldown}</span>
+        </div>
+      )}
+      {ctText && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cross Training </span>
+          <span style={{ color: '#0d9488' }}>{ctText}</span>
+        </div>
+      )}
+      {g.notes && (
+        <div style={{ marginBottom: '3px' }}>
+          <span style={{ fontWeight: '600', color: '#6b7280', fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes </span>
+          <span style={{ color: '#374151', fontStyle: 'italic' }}>{g.notes}</span>
+        </div>
+      )}
+      {/* Runners */}
+      <div style={{ marginTop: '6px', paddingTop: '5px', borderTop: '1px solid #f3f4f6' }}>
+        <span style={{ fontWeight: '700', color: '#4f46e5', fontSize: '10px' }}>
+          {g.runnerNames.join(' · ')}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Print Grid ─────────────────────────────────────────────────────────────────
+
+function PrintGrid({ days, grouped }) {
   const byDate = useMemo(() => {
     const map = {}
-    grouped.forEach((g) => { if (!map[g.date]) map[g.date] = []; map[g.date].push(g) })
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
-  }, [grouped])
+    days.forEach(d => { map[d] = [] })
+    grouped.forEach(g => { if (map[g.date]) map[g.date].push(g) })
+    return map
+  }, [days, grouped])
+
+  const colWidth = `${Math.floor(100 / days.length)}%`
+
   return (
-    <div className="print-view p-6 font-sans">
-      <h1 className="text-2xl font-bold mb-6 text-gray-900">Training Schedule</h1>
-      {byDate.map(([date, events]) => (
-        <div key={date} className="mb-6">
-          <h2 className="text-lg font-bold text-gray-800 border-b border-gray-300 pb-1 mb-3">
-            {format(parseISO(date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
-          </h2>
-          {events.map((ev, i) => (
-            <div key={i} className="mb-3 ml-4">
-              <p className="font-semibold text-gray-800">{ev.title}</p>
-              <ul className="ml-4 mt-1">{ev.runnerNames.map((n) => <li key={n} className="text-sm text-gray-600">• {n}</li>)}</ul>
-            </div>
-          ))}
+    <div className="print-view" style={{ fontFamily: 'sans-serif' }}>
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 10mm; }
+          body * { visibility: hidden; }
+          .print-view, .print-view * { visibility: visible; }
+          .print-view { position: fixed; top: 0; left: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+      {/* Page header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px', borderBottom: '2px solid #4f46e5', paddingBottom: '6px' }}>
+        <h1 style={{ fontSize: '16px', fontWeight: '800', color: '#111827', margin: 0 }}>
+          Episcopal Academy — Training Schedule
+        </h1>
+        <span style={{ fontSize: '11px', color: '#6b7280' }}>
+          {format(parseISO(days[0] + 'T12:00:00'), 'MMM d')} – {format(parseISO(days[days.length - 1] + 'T12:00:00'), 'MMM d, yyyy')}
+        </span>
+      </div>
+      {/* Grid table */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <thead>
+          <tr>
+            {days.map(dateStr => {
+              const d = parseISO(dateStr + 'T12:00:00')
+              const hasWorkouts = byDate[dateStr].length > 0
+              return (
+                <th key={dateStr} style={{
+                  width: colWidth, padding: '6px 8px', textAlign: 'center',
+                  backgroundColor: hasWorkouts ? '#4f46e5' : '#f9fafb',
+                  color: hasWorkouts ? '#fff' : '#9ca3af',
+                  fontSize: '11px', fontWeight: '700', border: '1px solid #e5e7eb',
+                  verticalAlign: 'bottom',
+                }}>
+                  <div style={{ fontSize: '13px', fontWeight: '800' }}>{format(d, 'EEE')}</div>
+                  <div style={{ fontSize: '10px', opacity: 0.85 }}>{format(d, 'MMM d')}</div>
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {days.map(dateStr => (
+              <td key={dateStr} style={{
+                padding: '6px', verticalAlign: 'top', border: '1px solid #e5e7eb',
+                backgroundColor: byDate[dateStr].length === 0 ? '#fafafa' : '#fff',
+              }}>
+                {byDate[dateStr].length === 0 ? (
+                  <p style={{ color: '#d1d5db', fontSize: '10px', textAlign: 'center', marginTop: '12px' }}>—</p>
+                ) : (
+                  byDate[dateStr].map((g, i) => <WorkoutBlock key={i} g={g} />)
+                )}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Print Setup Screen ─────────────────────────────────────────────────────────
+
+function PrintSetup({ grouped, onBack }) {
+  const [weekAnchor, setWeekAnchor] = useState(() => getMondayOf(new Date()))
+  const allDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(weekAnchor, i)
+    return d.toISOString().split('T')[0]
+  }), [weekAnchor])
+
+  const [activeDays, setActiveDays] = useState(new Set(allDays))
+
+  // When week changes, reset activeDays to all 7
+  function prevWeek() {
+    const anchor = addDays(weekAnchor, -7)
+    setWeekAnchor(anchor)
+    setActiveDays(new Set(Array.from({ length: 7 }, (_, i) => addDays(anchor, i).toISOString().split('T')[0])))
+  }
+  function nextWeek() {
+    const anchor = addDays(weekAnchor, 7)
+    setWeekAnchor(anchor)
+    setActiveDays(new Set(Array.from({ length: 7 }, (_, i) => addDays(anchor, i).toISOString().split('T')[0])))
+  }
+
+  function toggleDay(dateStr) {
+    setActiveDays(prev => {
+      const next = new Set(prev)
+      if (next.has(dateStr)) { if (next.size > 1) next.delete(dateStr) }
+      else next.add(dateStr)
+      return next
+    })
+  }
+
+  const selectedDays = allDays.filter(d => activeDays.has(d)).sort()
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      {/* Screen-only controls */}
+      <div className="no-print max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Calendar
+          </button>
+          <button onClick={() => window.print()} className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Print
+          </button>
         </div>
-      ))}
+
+        {/* Week picker */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
+          <h2 className="text-sm font-bold text-gray-700 mb-4">Select Week & Days</h2>
+          <div className="flex items-center gap-3 mb-4">
+            <button onClick={prevWeek} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <span className="text-sm font-semibold text-gray-800 min-w-[200px] text-center">
+              {format(parseISO(allDays[0] + 'T12:00:00'), 'MMM d')} — {format(parseISO(allDays[6] + 'T12:00:00'), 'MMM d, yyyy')}
+            </span>
+            <button onClick={nextWeek} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          {/* Day toggles */}
+          <div className="flex flex-wrap gap-2">
+            {allDays.map(dateStr => {
+              const d = parseISO(dateStr + 'T12:00:00')
+              const active = activeDays.has(dateStr)
+              const hasWorkouts = grouped.some(g => g.date === dateStr)
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => toggleDay(dateStr)}
+                  className={`flex flex-col items-center px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
+                    active
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="font-bold">{format(d, 'EEE')}</span>
+                  <span className="opacity-75">{format(d, 'MMM d')}</span>
+                  {hasWorkouts && (
+                    <span className={`mt-1 w-1.5 h-1.5 rounded-full ${active ? 'bg-white/70' : 'bg-indigo-300'}`} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            {selectedDays.length} day{selectedDays.length !== 1 ? 's' : ''} selected · Click a day to toggle it on/off
+          </p>
+        </div>
+
+        <p className="text-xs text-gray-400 mb-4 text-center">Preview below — click Print when ready</p>
+      </div>
+
+      {/* The actual printable grid */}
+      <div className="max-w-6xl mx-auto">
+        <PrintGrid days={selectedDays} grouped={grouped} />
+      </div>
     </div>
   )
 }
@@ -291,16 +530,7 @@ export default function CalendarPage() {
   }
 
   if (printMode) return (
-    <>
-      <style>{`@media print { body * { visibility: hidden; } .print-view, .print-view * { visibility: visible; } .print-view { position: fixed; top: 0; left: 0; width: 100%; } }`}</style>
-      <div className="p-6">
-        <div className="flex items-center gap-3 mb-4 no-print">
-          <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-600">← Back to Calendar</button>
-          <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">🖨 Print</button>
-        </div>
-        <PrintView grouped={grouped} />
-      </div>
-    </>
+    <PrintSetup grouped={grouped} onBack={() => setPrintMode(false)} />
   )
 
   return (
