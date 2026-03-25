@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   collection, query, where, orderBy, getDocs, addDoc, serverTimestamp,
-  doc, getDoc, updateDoc,
+  doc, getDoc, updateDoc, setDoc,
 } from 'firebase/firestore'
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db } from '../firebase/config'
@@ -148,7 +148,7 @@ export default function RunnerPage() {
       const picRef  = storageRef(storage, `profilePics/${runnerId}`)
       await uploadBytes(picRef, file)
       const url = await getDownloadURL(picRef)
-      await updateDoc(doc(db, 'runners', runnerId), { profilePicUrl: url })
+      await setDoc(doc(db, 'runners', runnerId), { profilePicUrl: url }, { merge: true })
       setProfilePicUrl(url)
     } catch (err) {
       console.error('Photo upload failed:', err)
@@ -159,10 +159,15 @@ export default function RunnerPage() {
 
   async function handleSavePassword(newPwd) {
     const trimmed = newPwd.trim()
-    await updateDoc(doc(db, 'runners', runnerId), { pagePassword: trimmed || null })
-    setPagePassword(trimmed)
-    // If they set a password, keep themselves unlocked for this session
-    if (trimmed) sessionStorage.setItem(`unlocked_${runnerId}`, '1')
+    try {
+      // Use setDoc with merge:true so it works even if the runners doc doesn't exist yet
+      await setDoc(doc(db, 'runners', runnerId), { pagePassword: trimmed || null }, { merge: true })
+      setPagePassword(trimmed)
+      // Keep themselves unlocked for this session
+      if (trimmed) sessionStorage.setItem(`unlocked_${runnerId}`, '1')
+    } catch (err) {
+      console.error('Password save failed:', err)
+    }
     setShowSetPassword(false)
   }
 
