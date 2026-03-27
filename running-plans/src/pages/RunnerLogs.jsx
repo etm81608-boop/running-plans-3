@@ -15,20 +15,23 @@ function toMillis(ts) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RunnerLogs() {
-  const [allLogs,   setAllLogs]   = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [search,    setSearch]    = useState('')
-  const [dateFrom,  setDateFrom]  = useState('')
-  const [dateTo,    setDateTo]    = useState('')
+  const [allLogs,        setAllLogs]        = useState([])
+  const [assignById,     setAssignById]     = useState({})
+  const [assignByKey,    setAssignByKey]    = useState({}) // runnerId_date fallback
+  const [loading,        setLoading]        = useState(true)
+  const [selectedRunner, setSelectedRunner] = useState('__all__')
+  const [dateFrom,       setDateFrom]       = useState('')
+  const [dateTo,         setDateTo]         = useState('')
 
   useEffect(() => {
     async function load() {
-      const snap = await getDocs(
+      // ── Load workout logs ──────────────────────────────────────────────────
+      const logSnap = await getDocs(
         query(collection(db, 'workoutLogs'), orderBy('date', 'desc'))
       )
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      const docs = logSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-      // ── Keep only the latest log per assignmentId ──────────────────────────
+      // Keep only the latest log per assignmentId
       const latestByAssignment = {}
       docs.forEach((doc) => {
         const key = doc.assignmentId || doc.id
@@ -45,21 +48,48 @@ export default function RunnerLogs() {
       const deduped = Object.values(latestByAssignment)
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       setAllLogs(deduped)
+
+      // ── Load assignments ───────────────────────────────────────────────────
+      const assignSnap = await getDocs(collection(db, 'assignments'))
+      const byId  = {}
+      const byKey = {}
+      assignSnap.docs.forEach((d) => {
+        const a = { id: d.id, ...d.data() }
+        byId[d.id] = a
+        if (a.runnerId && a.date) {
+          byKey[`${a.runnerId}_${a.date}`] = a
+        }
+      })
+      setAssignById(byId)
+      setAssignByKey(byKey)
+
       setLoading(false)
     }
     load()
   }, [])
 
+  // ── Unique runner list (alphabetical) ─────────────────────────────────────
+  const runners = useMemo(() => {
+    const map = {}
+    allLogs.forEach((log) => {
+      if (log.runnerName && !map[log.runnerName]) {
+        map[log.runnerName] = log.runnerName
+      }
+    })
+    return Object.keys(map).sort((a, b) => a.localeCompare(b))
+  }, [allLogs])
+
+  // ── Filter by selected runner + date range ────────────────────────────────
   const filtered = useMemo(() => {
     return allLogs.filter((log) => {
-      if (search && !log.runnerName?.toLowerCase().includes(search.toLowerCase())) return false
+      if (selectedRunner !== '__all__' && log.runnerName !== selectedRunner) return false
       if (dateFrom && log.date < dateFrom) return false
       if (dateTo   && log.date > dateTo)   return false
       return true
     })
-  }, [allLogs, search, dateFrom, dateTo])
+  }, [allLogs, selectedRunner, dateFrom, dateTo])
 
-  // Group by date for display
+  // ── Group by date ─────────────────────────────────────────────────────────
   const byDate = useMemo(() => {
     const map = {}
     filtered.forEach((log) => {
@@ -67,7 +97,6 @@ export default function RunnerLogs() {
       if (!map[d]) map[d] = []
       map[d].push(log)
     })
-    // Sort runners within each day alphabetically
     Object.values(map).forEach((arr) =>
       arr.sort((a, b) => (a.runnerName || '').localeCompare(b.runnerName || ''))
     )
@@ -75,6 +104,19 @@ export default function RunnerLogs() {
   }, [filtered])
 
   const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
+
+  // ── Look up assignment for a log ──────────────────────────────────────────
+  function getAssignment(log) {
+    if (log.assignmentId && assignById[log.assignmentId]) {
+      return assignById[log.assignmentId]
+    }
+    if (log.runnerId && log.date) {
+      return assignByKey[`${log.runnerId}_${log.date}`] || null
+    }
+    return null
+  }
+
+  const isAllView = selectedRunner === '__all__'
 
   return (
     <div className="p-8 max-w-5xl">
@@ -87,15 +129,29 @@ export default function RunnerLogs() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <input
-          type="text"
-          placeholder="Search by runner name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-brand-400"
-        />
+      {/* Athlete tabs */}
+      {!loading && runners.length > 0 && (
+        <div className="mb-0 overflow-x-auto">
+          <div className="flex gap-0 border-b border-gray-200 min-w-max">
+            <TabButton
+              label="All Runners"
+              active={isAllView}
+              onClick={() => setSelectedRunner('__all__')}
+            />
+            {runners.map((name) => (
+              <TabButton
+                key={name}
+                label={name}
+                active={selectedRunner === name}
+                onClick={() => setSelectedRunner(name)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Date filters */}
+      <div className="flex flex-wrap gap-3 mt-5 mb-6">
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">From</label>
           <input
@@ -114,9 +170,9 @@ export default function RunnerLogs() {
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
           />
         </div>
-        {(search || dateFrom || dateTo) && (
+        {(dateFrom || dateTo) && (
           <button
-            onClick={() => { setSearch(''); setDateFrom(''); setDateTo('') }}
+            onClick={() => { setDateFrom(''); setDateTo('') }}
             className="text-xs text-gray-400 hover:text-gray-700 font-semibold underline transition-colors"
           >
             Clear filters
@@ -149,13 +205,23 @@ export default function RunnerLogs() {
                     : 'Unknown Date'}
                 </h2>
                 <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-xs text-gray-400">{byDate[dateStr].length} runner{byDate[dateStr].length !== 1 ? 's' : ''}</span>
+                {isAllView && (
+                  <span className="text-xs text-gray-400">
+                    {byDate[dateStr].length} runner{byDate[dateStr].length !== 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
 
-              {/* Log cards for this date */}
-              <div className="space-y-3">
+              {/* Log cards */}
+              <div className="space-y-4">
                 {byDate[dateStr].map((log) => (
-                  <LogCard key={log.id} log={log} />
+                  <LogCard
+                    key={log.id}
+                    log={log}
+                    assignment={getAssignment(log)}
+                    showRunner={isAllView}
+                    defaultWorkoutOpen={!isAllView}
+                  />
                 ))}
               </div>
             </div>
@@ -166,25 +232,51 @@ export default function RunnerLogs() {
   )
 }
 
+// ── Tab Button ────────────────────────────────────────────────────────────────
+
+function TabButton({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 -mb-px ${
+        active
+          ? 'border-brand-600 text-brand-700 bg-white'
+          : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
 // ── Log Card ──────────────────────────────────────────────────────────────────
 
-function LogCard({ log }) {
-  const [expanded, setExpanded] = useState(false)
-  const hasSplits  = log.splits && log.splits.length > 0
-  const hasExtras  = hasSplits || log.notes
+function LogCard({ log, assignment, showRunner, defaultWorkoutOpen }) {
+  const hasSplits   = log.splits && log.splits.length > 0
   const submittedAt = log.updatedAt || log.submittedAt
   const wasEdited   = !!log.updatedAt
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
 
-      {/* Top bar — runner + date stamp */}
+      {/* Assigned workout panel (above the log) */}
+      {assignment && (
+        <AssignedWorkoutPanel assignment={assignment} defaultOpen={defaultWorkoutOpen} />
+      )}
+
+      {/* Top bar — runner name + timestamp */}
       <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 font-black text-xs flex-shrink-0">
-            {log.runnerName?.trim().split(/\s+/).map((w) => w[0]?.toUpperCase()).join('') || '?'}
-          </div>
-          <p className="font-bold text-gray-900 text-sm">{log.runnerName || 'Unknown Runner'}</p>
+          {showRunner ? (
+            <>
+              <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 font-black text-xs flex-shrink-0">
+                {log.runnerName?.trim().split(/\s+/).map((w) => w[0]?.toUpperCase()).join('') || '?'}
+              </div>
+              <p className="font-bold text-gray-900 text-sm">{log.runnerName || 'Unknown Runner'}</p>
+            </>
+          ) : (
+            <p className="text-xs font-black text-gray-500 uppercase tracking-widest">Runner's Log</p>
+          )}
         </div>
         <div className="text-right">
           {submittedAt && (
@@ -201,31 +293,20 @@ function LogCard({ log }) {
       {/* Main body */}
       <div className="px-5 py-4 space-y-3">
 
-        {/* Activity description */}
         {log.actualActivity && (
           <p className="text-sm text-gray-800 leading-relaxed">{log.actualActivity}</p>
         )}
 
-        {/* Stats row */}
         <div className="flex flex-wrap gap-4">
-          {log.distance && (
-            <Stat label="Distance" value={log.distance} />
-          )}
-          {log.duration && (
-            <Stat label="Time" value={log.duration} />
-          )}
-          {log.avgPace && (
-            <Stat label="Avg Pace" value={log.avgPace} />
-          )}
-          {log.avgHeartRate && (
-            <Stat label="Avg HR" value={log.avgHeartRate} />
-          )}
+          {log.distance     && <Stat label="Distance"    value={log.distance}              />}
+          {log.duration     && <Stat label="Time"        value={log.duration}              />}
+          {log.avgPace      && <Stat label="Avg Pace"    value={log.avgPace}               />}
+          {log.avgHeartRate && <Stat label="Avg HR"      value={log.avgHeartRate}          />}
           {log.rpe != null && log.rpe !== '' && (
             <Stat label="Effort (RPE)" value={`${log.rpe} / 10`} accent />
           )}
         </div>
 
-        {/* Splits — always shown if present */}
         {hasSplits && (
           <div>
             <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Splits</p>
@@ -240,7 +321,6 @@ function LogCard({ log }) {
           </div>
         )}
 
-        {/* Notes */}
         {log.notes && (
           <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
             <p className="text-xs font-black text-amber-600 uppercase tracking-widest mb-1">Notes for Coach</p>
@@ -248,7 +328,6 @@ function LogCard({ log }) {
           </div>
         )}
 
-        {/* Nothing logged */}
         {!log.actualActivity && !log.distance && !log.avgPace && !log.rpe && !hasSplits && !log.notes && (
           <p className="text-sm text-gray-400 italic">No details recorded.</p>
         )}
@@ -256,6 +335,94 @@ function LogCard({ log }) {
     </div>
   )
 }
+
+// ── Assigned Workout Panel ────────────────────────────────────────────────────
+
+function AssignedWorkoutPanel({ assignment, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  const hasDetail =
+    assignment.warmup          ||
+    assignment.drills          ||
+    assignment.additionalWarmup ||
+    assignment.mainWorkout     ||
+    assignment.cooldown        ||
+    assignment.notes
+
+  return (
+    <div className="border-b border-blue-100 bg-blue-50">
+      {/* Header row — always visible */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-5 py-2.5 text-left group"
+      >
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-black text-blue-500 uppercase tracking-widest">
+            📋 Assigned Workout
+          </span>
+          {assignment.workoutTitle && (
+            <span className="text-xs font-semibold text-blue-800">
+              {assignment.workoutTitle}
+            </span>
+          )}
+          {assignment.workoutType && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium capitalize">
+              {assignment.workoutType.replace(/_/g, ' ')}
+            </span>
+          )}
+        </div>
+        {hasDetail && (
+          <span className="text-xs text-blue-400 font-semibold ml-4 shrink-0 group-hover:text-blue-600 transition-colors">
+            {open ? '▲ Hide' : '▼ Show'}
+          </span>
+        )}
+      </button>
+
+      {/* Expandable detail */}
+      {open && hasDetail && (
+        <div className="px-5 pb-4 space-y-3 border-t border-blue-100">
+          {assignment.warmup && (
+            <WorkoutSection label="Warm-Up" content={assignment.warmup} />
+          )}
+          {assignment.drills && (
+            <WorkoutSection label="Drills" content={assignment.drills} />
+          )}
+          {assignment.additionalWarmup && (
+            <WorkoutSection label="Additional Warm-Up" content={assignment.additionalWarmup} />
+          )}
+          {assignment.mainWorkout && (
+            <WorkoutSection label="Main Workout" content={assignment.mainWorkout} highlight />
+          )}
+          {assignment.cooldown && (
+            <WorkoutSection label="Cool-Down" content={assignment.cooldown} />
+          )}
+          {assignment.notes && (
+            <WorkoutSection label="Coach Notes" content={assignment.notes} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WorkoutSection({ label, content, highlight = false }) {
+  return (
+    <div className="pt-3">
+      <p className={`text-xs font-black uppercase tracking-widest mb-1 ${
+        highlight ? 'text-blue-700' : 'text-blue-400'
+      }`}>
+        {label}
+      </p>
+      <p className={`text-sm leading-relaxed whitespace-pre-wrap ${
+        highlight ? 'text-gray-900 font-medium' : 'text-gray-600'
+      }`}>
+        {content}
+      </p>
+    </div>
+  )
+}
+
+// ── Stat chip ─────────────────────────────────────────────────────────────────
 
 function Stat({ label, value, accent = false }) {
   return (
