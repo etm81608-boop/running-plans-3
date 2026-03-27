@@ -8,6 +8,7 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'fire
 import { db } from '../firebase/config'
 import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 import { ctToText } from '../components/CrossTrainingInput'
+import RunnerMessenger from '../components/RunnerMessenger'
 import useWeather from '../hooks/useWeather'
 import { SWIM_WORKOUTS }    from '../data/swimWorkouts'
 import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
@@ -1101,6 +1102,9 @@ function StrengthSection() {
           </div>
         </div>
       )}
+
+      {/* ── Messenger floating button ── */}
+      <RunnerMessenger runnerId={runnerId} />
     </div>
   )
 }
