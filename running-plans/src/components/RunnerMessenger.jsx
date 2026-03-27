@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   collection, query, orderBy, onSnapshot,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { useEffect } from 'react'
 
 function formatTime(ts) {
   if (!ts) return ''
