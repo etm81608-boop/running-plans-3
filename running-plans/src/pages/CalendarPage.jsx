@@ -145,7 +145,7 @@ function PrintGrid({ days, grouped }) {
           @page { size: landscape; margin: 10mm; }
           body * { visibility: hidden; }
           .print-view, .print-view * { visibility: visible; }
-          .print-view { position: fixed; top: 0; left: 0; width: 100%; }
+          .print-view { position: absolute; top: 0; left: 0; width: 100%; }
           .no-print { display: none !important; }
         }
       `}</style>
