@@ -268,11 +268,14 @@ export default function RunnerPage() {
   )
 
   if (isLocked) return (
-    <LockScreen
-      runnerName={runnerName}
-      profilePicUrl={profilePicUrl}
-      onUnlock={handleUnlock}
-    />
+    <>
+      <LockScreen
+        runnerName={runnerName}
+        profilePicUrl={profilePicUrl}
+        onUnlock={handleUnlock}
+      />
+      <RunnerMessenger runnerId={runnerId} />
+    </>
   )
 
   return (
