@@ -452,6 +452,11 @@ export default function RunnerPage() {
               <p className="text-xs text-rose-400 uppercase tracking-wide mt-0.5">Logged</p>
             </div>
           </div>
+
+          {/* ── Coach Message Card ── */}
+          {coachMessages.length > 0 && (
+            <CoachMessageCard messages={coachMessages} />
+          )}
         </div>
 
         {/* Tab bar */}
@@ -888,6 +893,66 @@ export default function RunnerPage() {
 
       {/* ── Runner Messenger bubble ── */}
       <RunnerMessenger runnerId={runnerId} />
+    </div>
+  )
+}
+
+// ── Coach Message Card ────────────────────────────────────────────────────────
+
+function CoachMessageCard({ messages }) {
+  const [expanded, setExpanded] = useState(false)
+  const latest = messages[0]
+
+  function formatMsgTime(ts) {
+    if (!ts) return ''
+    const d = ts.toDate ? ts.toDate() : new Date(ts)
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+
+  return (
+    <div className="w-full mt-3 rounded-2xl overflow-hidden border border-rose-300 shadow-md">
+      {/* Latest message preview — always visible */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full bg-rose-700 px-4 py-3 flex items-start gap-3 text-left"
+      >
+        <div className="flex-shrink-0 mt-0.5">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-rose-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <span className="text-xs font-black text-rose-200 uppercase tracking-widest">
+              Coach · {messages.length > 1 ? `${messages.length} messages` : 'Message'}
+            </span>
+            <span className="text-xs text-rose-300 flex-shrink-0">{formatMsgTime(latest.sentAt)}</span>
+          </div>
+          <p className="text-sm text-white font-medium leading-snug line-clamp-2">{latest.text}</p>
+        </div>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className={`h-4 w-4 text-rose-300 flex-shrink-0 mt-1 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Expanded: all messages */}
+      {expanded && messages.length > 1 && (
+        <ul className="bg-white divide-y divide-rose-100">
+          {messages.slice(1).map((msg) => (
+            <li key={msg.id} className="px-4 py-3">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs font-bold text-rose-500 uppercase tracking-wide">Coach</span>
+                <span className="text-xs text-gray-400">{formatMsgTime(msg.sentAt)}</span>
+              </div>
+              <p className="text-sm text-gray-800 leading-relaxed">{msg.text}</p>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
