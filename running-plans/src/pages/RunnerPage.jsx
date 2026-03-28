@@ -911,7 +911,6 @@ function CoachMessageCard({ messages }) {
 
   return (
     <div className="w-full mt-3 rounded-2xl overflow-hidden border border-rose-300 shadow-md">
-      {/* Latest message preview — always visible */}
       <button
         onClick={() => setExpanded((v) => !v)}
         className="w-full bg-rose-700 px-4 py-3 flex items-start gap-3 text-left"
@@ -938,8 +937,6 @@ function CoachMessageCard({ messages }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-
-      {/* Expanded: all messages */}
       {expanded && messages.length > 1 && (
         <ul className="bg-white divide-y divide-rose-100">
           {messages.slice(1).map((msg) => (
