@@ -74,6 +74,7 @@ export default function RunnerPage() {
   const [uploading,        setUploading]        = useState(false)
   const [allMeets,         setAllMeets]         = useState([])
   const [coachMessages,    setCoachMessages]    = useState([])
+  const [colorTheme,       setColorTheme]       = useState('rose')
   const fileInputRef = useRef(null)
 
   // Password / lock
@@ -121,6 +122,7 @@ export default function RunnerPage() {
         if (runnerDoc.exists()) {
           const data = runnerDoc.data()
           if (data.profilePicUrl) setProfilePicUrl(data.profilePicUrl)
+          if (data.colorTheme)   setColorTheme(data.colorTheme)
           if (data.pagePassword) {
             setPagePassword(data.pagePassword)
             const alreadyUnlocked = sessionStorage.getItem(`unlocked_${runnerId}`)
@@ -266,7 +268,60 @@ export default function RunnerPage() {
   )
 
   return (
-    <div className="min-h-screen bg-pink-50">
+    <div className="min-h-screen bg-pink-50" data-theme={colorTheme}>
+
+      {/* ── Blue theme override ── */}
+      {colorTheme === 'blue' && (
+        <style>{`
+          [data-theme="blue"].bg-pink-50,
+          [data-theme="blue"] .bg-pink-50 { background-color: #eff6ff !important; }
+
+          [data-theme="blue"] header.bg-gradient-to-br {
+            background: linear-gradient(to bottom right, #dbeafe, #e0f2fe, #e0f2fe) !important;
+          }
+
+          [data-theme="blue"] .bg-rose-50   { background-color: #eff6ff !important; }
+          [data-theme="blue"] .bg-rose-100  { background-color: #dbeafe !important; }
+          [data-theme="blue"] .bg-rose-200  { background-color: #bfdbfe !important; }
+          [data-theme="blue"] .bg-rose-300  { background-color: #93c5fd !important; }
+          [data-theme="blue"] .bg-rose-400  { background-color: #60a5fa !important; }
+          [data-theme="blue"] .bg-rose-500  { background-color: #3b82f6 !important; }
+          [data-theme="blue"] .bg-rose-600  { background-color: #2563eb !important; }
+          [data-theme="blue"] .bg-rose-700  { background-color: #1d4ed8 !important; }
+          [data-theme="blue"] .bg-rose-800  { background-color: #1e40af !important; }
+          [data-theme="blue"] .bg-rose-900  { background-color: #1e3a8a !important; }
+
+          [data-theme="blue"] .bg-rose-50\/40  { background-color: rgba(239,246,255,0.4) !important; }
+          [data-theme="blue"] .bg-rose-50\/20  { background-color: rgba(239,246,255,0.2) !important; }
+          [data-theme="blue"] .bg-rose-50\/50  { background-color: rgba(239,246,255,0.5) !important; }
+          [data-theme="blue"] .bg-rose-900\/30 { background-color: rgba(30,58,138,0.3) !important; }
+
+          [data-theme="blue"] .text-rose-100 { color: #dbeafe !important; }
+          [data-theme="blue"] .text-rose-200 { color: #bfdbfe !important; }
+          [data-theme="blue"] .text-rose-300 { color: #93c5fd !important; }
+          [data-theme="blue"] .text-rose-400 { color: #60a5fa !important; }
+          [data-theme="blue"] .text-rose-500 { color: #3b82f6 !important; }
+          [data-theme="blue"] .text-rose-600 { color: #2563eb !important; }
+          [data-theme="blue"] .text-rose-700 { color: #1d4ed8 !important; }
+          [data-theme="blue"] .text-rose-800 { color: #1e40af !important; }
+          [data-theme="blue"] .text-rose-900 { color: #1e3a8a !important; }
+
+          [data-theme="blue"] .border-rose-100 { border-color: #dbeafe !important; }
+          [data-theme="blue"] .border-rose-200 { border-color: #bfdbfe !important; }
+          [data-theme="blue"] .border-rose-300 { border-color: #93c5fd !important; }
+          [data-theme="blue"] .border-rose-400 { border-color: #60a5fa !important; }
+          [data-theme="blue"] .border-rose-500 { border-color: #3b82f6 !important; }
+          [data-theme="blue"] .border-rose-600 { border-color: #2563eb !important; }
+          [data-theme="blue"] .border-rose-700 { border-color: #1d4ed8 !important; }
+          [data-theme="blue"] .border-rose-200\/60 { border-color: rgba(191,219,254,0.6) !important; }
+
+          [data-theme="blue"] .hover\:bg-rose-50:hover   { background-color: #eff6ff !important; }
+          [data-theme="blue"] .hover\:bg-rose-800:hover  { background-color: #1e40af !important; }
+          [data-theme="blue"] .hover\:text-rose-500:hover { color: #3b82f6 !important; }
+          [data-theme="blue"] .hover\:text-rose-600:hover { color: #2563eb !important; }
+          [data-theme="blue"] .hover\:text-rose-700:hover { color: #1d4ed8 !important; }
+        `}</style>
+      )}
 
       {/* ── Header ── */}
       <header className="bg-gradient-to-br from-rose-100 via-pink-50 to-violet-100 border-b border-rose-200">
