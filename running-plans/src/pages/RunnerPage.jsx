@@ -885,6 +885,9 @@ export default function RunnerPage() {
           />
         )
       })()}
+
+      {/* ── Runner Messenger bubble ── */}
+      <RunnerMessenger runnerId={runnerId} />
     </div>
   )
 }
@@ -1189,8 +1192,6 @@ function StrengthSection() {
         </div>
       )}
 
-      {/* ── Messenger floating button ── */}
-      <RunnerMessenger runnerId={runnerId} />
     </div>
   )
 }
