@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useParams } from 'react-router-dom'
 import {
   collection, query, where, orderBy, getDocs, addDoc, serverTimestamp,
@@ -11,88 +10,7 @@ import { format, parseISO, startOfDay, addDays, startOfWeek } from 'date-fns'
 import { ctToText } from '../components/CrossTrainingInput'
 import useWeather from '../hooks/useWeather'
 
-// ── Runner Messenger (inline) ─────────────────────────────────────────────────
-function RunnerMessenger({ runnerId }) {
-  const [open, setOpen]             = useState(false)
-  const [messages, setMessages]     = useState([])
-  const [expandedId, setExpandedId] = useState(null)
 
-  useEffect(() => {
-    const q = query(collection(db, 'coachMessages'), orderBy('sentAt', 'desc'))
-    const unsub = onSnapshot(q, (snap) => {
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      setMessages(all.filter((m) =>
-        m.recipientType === 'all' ||
-        (Array.isArray(m.recipientIds) && m.recipientIds.includes(runnerId))
-      ))
-    })
-    return unsub
-  }, [runnerId])
-
-  function formatMsgTime(ts) {
-    if (!ts) return ''
-    const d = ts.toDate ? ts.toDate() : new Date(ts)
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  }
-
-  return createPortal(
-    <>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999 }}
-        className="w-12 h-12 rounded-full bg-rose-700 text-white shadow-lg hover:bg-rose-800 flex items-center justify-center"
-        title="Messages from Coach"
-      >
-        {open
-          ? <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" /></svg>
-        }
-        {!open && messages.length > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">
-            {messages.length > 99 ? '99+' : messages.length}
-          </span>
-        )}
-      </button>
-      {open && (
-        <div style={{ position: 'fixed', bottom: '80px', right: '20px', zIndex: 9999, maxHeight: '480px', width: '320px' }}
-          className="bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
-        >
-          <div className="bg-rose-900 px-4 py-3 flex items-center gap-2 flex-shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-rose-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" /></svg>
-            <span className="text-white font-semibold text-sm">Messages from Coach</span>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center p-6 text-gray-400" style={{ minHeight: '160px' }}>
-                <p className="text-sm font-medium">No messages yet</p>
-                <p className="text-xs mt-1">Your coach hasn't sent any notes.</p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {messages.map((msg) => (
-                  <li key={msg.id}>
-                    <button onClick={() => setExpandedId(expandedId === msg.id ? null : msg.id)}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-semibold text-rose-800">
-                          {msg.recipientType === 'all' ? 'To: All Runners' : 'To: You'}
-                        </span>
-                        <span className="text-xs text-gray-400">{formatMsgTime(msg.sentAt)}</span>
-                      </div>
-                      <p className={`text-xs text-gray-600 leading-relaxed ${expandedId === msg.id ? '' : 'line-clamp-2'}`}>{msg.text}</p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </>,
-    document.body
-  )
-}
 import { SWIM_WORKOUTS }    from '../data/swimWorkouts'
 import { STRENGTH_WORKOUTS } from '../data/strengthWorkouts'
 import { MOBILITY_WORKOUT }  from '../data/mobilityWorkout'
@@ -156,9 +74,6 @@ export default function RunnerPage() {
   const [uploading,        setUploading]        = useState(false)
   const [allMeets,         setAllMeets]         = useState([])
   const [coachMessages,    setCoachMessages]    = useState([])
-  const [dismissedMsgIds,  setDismissedMsgIds]  = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem(`dismissed_msgs_${runnerId}`) || '[]') } catch { return [] }
-  })
   const fileInputRef = useRef(null)
 
   // Password / lock
@@ -242,14 +157,6 @@ export default function RunnerPage() {
     }, () => {})
     return unsub
   }, [runnerId])
-
-  function dismissMessage(id) {
-    setDismissedMsgIds((prev) => {
-      const next = [...prev, id]
-      sessionStorage.setItem(`dismissed_msgs_${runnerId}`, JSON.stringify(next))
-      return next
-    })
-  }
 
   async function handlePicUpload(file) {
     if (!file) return
@@ -351,14 +258,11 @@ export default function RunnerPage() {
   )
 
   if (isLocked) return (
-    <>
-      <LockScreen
-        runnerName={runnerName}
-        profilePicUrl={profilePicUrl}
-        onUnlock={handleUnlock}
-      />
-      <RunnerMessenger runnerId={runnerId} />
-    </>
+    <LockScreen
+      runnerName={runnerName}
+      profilePicUrl={profilePicUrl}
+      onUnlock={handleUnlock}
+    />
   )
 
   return (
@@ -480,50 +384,6 @@ export default function RunnerPage() {
         </div>
       </header>
 
-      {/* ── Coach Messages Banner ── */}
-      {coachMessages.filter((m) => !dismissedMsgIds.includes(m.id)).length > 0 && (
-        <div className="max-w-7xl mx-auto px-3 pt-4 space-y-2">
-          {coachMessages
-            .filter((m) => !dismissedMsgIds.includes(m.id))
-            .map((msg) => (
-              <div
-                key={msg.id}
-                className="bg-white border border-rose-200 rounded-2xl px-4 py-3 flex items-start gap-3 shadow-sm"
-              >
-                {/* Icon */}
-                <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-rose-100 flex items-center justify-center mt-0.5">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
-                  </svg>
-                </div>
-                {/* Body */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-rose-600 uppercase tracking-widest">Coach</span>
-                    {msg.sentAt && (
-                      <span className="text-xs text-rose-300">
-                        {(msg.sentAt.toDate ? msg.sentAt.toDate() : new Date(msg.sentAt))
-                          .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-rose-900 leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                </div>
-                {/* Dismiss */}
-                <button
-                  onClick={() => dismissMessage(msg.id)}
-                  className="flex-shrink-0 text-rose-300 hover:text-rose-500 transition-colors mt-0.5"
-                  aria-label="Dismiss message"
-                  title="Dismiss"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-        </div>
-      )}
 
       {/* ── Tab: My Schedule ── */}
       {activeTab === 'schedule' && (
@@ -891,8 +751,6 @@ export default function RunnerPage() {
         )
       })()}
 
-      {/* ── Runner Messenger bubble ── */}
-      <RunnerMessenger runnerId={runnerId} />
     </div>
   )
 }
