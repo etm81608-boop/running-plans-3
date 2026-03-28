@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   collection, query, orderBy, onSnapshot,
 } from 'firebase/firestore'
@@ -14,8 +15,8 @@ function formatTime(ts) {
 }
 
 export default function RunnerMessenger({ runnerId }) {
-  const [open, setOpen]       = useState(false)
-  const [messages, setMessages] = useState([])
+  const [open, setOpen]             = useState(false)
+  const [messages, setMessages]     = useState([])
   const [expandedId, setExpandedId] = useState(null)
 
   // Live feed filtered to this runner
@@ -34,12 +35,13 @@ export default function RunnerMessenger({ runnerId }) {
 
   const unread = messages.length
 
-  return (
+  return createPortal(
     <>
       {/* ── Floating toggle button ── */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-rose-700 text-white shadow-lg hover:bg-rose-800 active:scale-95 transition-all flex items-center justify-center"
+        style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999 }}
+        className="w-12 h-12 rounded-full bg-rose-700 text-white shadow-lg hover:bg-rose-800 active:scale-95 transition-all flex items-center justify-center"
         title="Messages from Coach"
       >
         {open ? (
@@ -61,8 +63,8 @@ export default function RunnerMessenger({ runnerId }) {
       {/* ── Panel ── */}
       {open && (
         <div
-          className="fixed bottom-20 right-5 z-40 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
-          style={{ maxHeight: '480px' }}
+          style={{ position: 'fixed', bottom: '80px', right: '20px', zIndex: 9999, maxHeight: '480px', width: '320px' }}
+          className="bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
         >
           {/* Header */}
           <div className="bg-rose-900 px-4 py-3 flex items-center gap-2 flex-shrink-0">
@@ -113,6 +115,7 @@ export default function RunnerMessenger({ runnerId }) {
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   )
 }
