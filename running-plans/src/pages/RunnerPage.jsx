@@ -73,8 +73,9 @@ export default function RunnerPage() {
   const [profilePicUrl,    setProfilePicUrl]    = useState(null)
   const [uploading,        setUploading]        = useState(false)
   const [allMeets,         setAllMeets]         = useState([])
-  const [coachMessages,    setCoachMessages]    = useState([])
-  const [colorTheme,       setColorTheme]       = useState('rose')
+  const [coachMessages,          setCoachMessages]          = useState([])
+  const [colorTheme,             setColorTheme]             = useState('rose')
+  const [coachCommentsByAssignment, setCoachCommentsByAssignment] = useState({})
   const fileInputRef = useRef(null)
 
   // Password / lock
@@ -158,6 +159,22 @@ export default function RunnerPage() {
       )
     }, () => {})
     return unsub
+  }, [runnerId])
+
+  // Load workout logs to check for coach comments
+  useEffect(() => {
+    getDocs(query(collection(db, 'workoutLogs'), where('runnerId', '==', runnerId)))
+      .then((snap) => {
+        const map = {}
+        snap.docs.forEach((d) => {
+          const data = d.data()
+          if (data.coachComment && data.assignmentId) {
+            map[data.assignmentId] = data.coachComment
+          }
+        })
+        setCoachCommentsByAssignment(map)
+      })
+      .catch(() => {})
   }, [runnerId])
 
   async function handlePicUpload(file) {
@@ -630,6 +647,17 @@ export default function RunnerPage() {
                               </div>
                             )}
 
+                            {/* Coach comment badge */}
+                            {coachCommentsByAssignment[a.id] && (
+                              <button
+                                onClick={() => setDetailDate(dateStr)}
+                                className="w-full flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-left hover:bg-indigo-100 transition-colors"
+                              >
+                                <span className="text-base leading-none">💬</span>
+                                <span className="text-xs font-bold text-indigo-600 leading-tight">Note from Coach</span>
+                              </button>
+                            )}
+
                             {/* Log button */}
                             <div className="mt-auto pt-1">
                               {isLogged ? (
@@ -779,6 +807,7 @@ export default function RunnerPage() {
             onLog={() => { setDetailDate(null); setLogOpenDate(detailDate) }}
             isLogged={loggedIds.includes(a.id)}
             onEdit={() => { setDetailDate(null); setLogOpenDate(detailDate) }}
+            coachComment={coachCommentsByAssignment[a.id] || null}
           />
         )
       })()}
@@ -1569,7 +1598,7 @@ function SetPasswordModal({ currentPassword, onSave, onCancel }) {
 
 // ── Workout Detail Modal ───────────────────────────────────────────────────────
 
-function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog, isLogged, onEdit }) {
+function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog, isLogged, onEdit, coachComment }) {
   const d = parseISO(a.date + 'T12:00:00')
 
   return (
@@ -1642,6 +1671,14 @@ function WorkoutDetailModal({ assignment: a, dayMeets, partners, onClose, onLog,
           {/* Coach Notes */}
           {a.notes && (
             <Section color="amber" label="Notes from Coach" text={a.notes} />
+          )}
+
+          {/* Coach comment on this log */}
+          {coachComment && (
+            <div className="border-l-4 border-indigo-400 bg-indigo-50 pl-4 pr-3 py-3 rounded-r-xl">
+              <p className="text-xs font-black uppercase tracking-widest text-indigo-600 mb-1">💬 Note from Coach</p>
+              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{coachComment}</p>
+            </div>
           )}
 
           {/* Training partners */}
