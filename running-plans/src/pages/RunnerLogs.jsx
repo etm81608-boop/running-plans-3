@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { collection, getDocs, orderBy, query } from 'firebase/firestore'
+import { collection, getDocs, orderBy, query, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { format, parseISO } from 'date-fns'
 
@@ -256,6 +256,29 @@ function LogCard({ log, assignment, showRunner, defaultWorkoutOpen }) {
   const submittedAt = log.updatedAt || log.submittedAt
   const wasEdited   = !!log.updatedAt
 
+  // ── Coach comment state ───────────────────────────────────────────────────
+  const [commentDraft,  setCommentDraft]  = useState(log.coachComment || '')
+  const [savedComment,  setSavedComment]  = useState(log.coachComment || '')
+  const [savingComment, setSavingComment] = useState(false)
+  const [commentError,  setCommentError]  = useState('')
+
+  async function handleSaveComment() {
+    if (!commentDraft.trim() && !savedComment) return
+    setSavingComment(true)
+    setCommentError('')
+    try {
+      await updateDoc(doc(db, 'workoutLogs', log.id), {
+        coachComment:    commentDraft.trim() || null,
+        coachCommentedAt: serverTimestamp(),
+      })
+      setSavedComment(commentDraft.trim())
+    } catch (err) {
+      setCommentError('Could not save. Try again.')
+    } finally {
+      setSavingComment(false)
+    }
+  }
+
   return (
     <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
 
@@ -331,6 +354,43 @@ function LogCard({ log, assignment, showRunner, defaultWorkoutOpen }) {
         {!log.actualActivity && !log.distance && !log.avgPace && !log.rpe && !hasSplits && !log.notes && (
           <p className="text-sm text-gray-400 italic">No details recorded.</p>
         )}
+
+        {/* ── Coach Comment ── */}
+        <div className="border-t border-gray-100 pt-3 mt-1">
+          <p className="text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">
+            💬 Note to Runner
+          </p>
+          {savedComment && commentDraft === savedComment && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 mb-2 flex items-start justify-between gap-2">
+              <p className="text-sm text-indigo-800 leading-relaxed flex-1">{savedComment}</p>
+              <button
+                onClick={() => setCommentDraft('')}
+                className="text-xs text-indigo-300 hover:text-indigo-600 font-semibold flex-shrink-0 transition-colors"
+                title="Clear note"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2 items-start">
+            <textarea
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              placeholder="Leave a note for this runner about this workout…"
+              rows={2}
+              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none placeholder-gray-300"
+            />
+            <button
+              onClick={handleSaveComment}
+              disabled={savingComment || commentDraft === savedComment}
+              className="px-3 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white text-xs font-black rounded-lg transition-colors flex-shrink-0"
+            >
+              {savingComment ? '…' : savedComment && commentDraft === savedComment ? '✓ Saved' : 'Save'}
+            </button>
+          </div>
+          {commentError && <p className="text-xs text-red-400 mt-1">{commentError}</p>}
+        </div>
+
       </div>
     </div>
   )
