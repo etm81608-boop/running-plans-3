@@ -11,12 +11,13 @@ import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 import CrossTrainingInput, { normaliseCT, ctToText } from '../components/CrossTrainingInput'
 import { WORKOUT_TYPES } from '../utils/constants'
+import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import useWeather from '../hooks/useWeather'
 import { format, parseISO, addDays, startOfWeek } from 'date-fns'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const FORM_WORKOUT_TYPES = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
+// FORM_WORKOUT_TYPES is now built dynamically inside the component via useWorkoutTypes()
 const DRILL_OPTIONS = ['Cone / Wicket Drills', 'Hurdle Drills', 'Hip Drills']
 
 const EMPTY_FORM = {
@@ -52,9 +53,9 @@ function getMondayOf(d) { return startOfWeek(d, { weekStartsOn: 1 }) }
 
 // ── Single workout block (used inside print grid cell) ────────────────────────
 
-function WorkoutBlock({ g }) {
+function WorkoutBlock({ g, workoutTypes }) {
   const ctText = ctToText(g.crossTraining)
-  const typeLabel = WORKOUT_TYPES.find(t => t.value === g.workoutType)?.label
+  const typeLabel = (workoutTypes || WORKOUT_TYPES).find(t => t.value === g.workoutType)?.label
   return (
     <div style={{
       border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px 10px',
@@ -128,7 +129,7 @@ function WorkoutBlock({ g }) {
 
 // ── Print Grid ─────────────────────────────────────────────────────────────────
 
-function PrintGrid({ days, grouped }) {
+function PrintGrid({ days, grouped, workoutTypes }) {
   const byDate = useMemo(() => {
     const map = {}
     days.forEach(d => { map[d] = [] })
@@ -190,7 +191,7 @@ function PrintGrid({ days, grouped }) {
                 {byDate[dateStr].length === 0 ? (
                   <p style={{ color: '#d1d5db', fontSize: '10px', textAlign: 'center', marginTop: '12px' }}>—</p>
                 ) : (
-                  byDate[dateStr].map((g, i) => <WorkoutBlock key={i} g={g} />)
+                  byDate[dateStr].map((g, i) => <WorkoutBlock key={i} g={g} workoutTypes={workoutTypes} />)
                 )}
               </td>
             ))}
@@ -203,7 +204,7 @@ function PrintGrid({ days, grouped }) {
 
 // ── Print Setup Screen ─────────────────────────────────────────────────────────
 
-function PrintSetup({ grouped, onBack }) {
+function PrintSetup({ grouped, onBack, workoutTypes }) {
   const [weekAnchor, setWeekAnchor] = useState(() => getMondayOf(new Date()))
   const allDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = addDays(weekAnchor, i)
@@ -307,7 +308,7 @@ function PrintSetup({ grouped, onBack }) {
 
       {/* The actual printable grid */}
       <div className="max-w-6xl mx-auto">
-        <PrintGrid days={selectedDays} grouped={grouped} />
+        <PrintGrid days={selectedDays} grouped={grouped} workoutTypes={workoutTypes} />
       </div>
     </div>
   )
@@ -315,7 +316,7 @@ function PrintSetup({ grouped, onBack }) {
 
 // ── Shared workout form ───────────────────────────────────────────────────────
 
-function WorkoutFormFields({ form, setField }) {
+function WorkoutFormFields({ form, setField, workoutTypes }) {
   return (
     <>
       <Card step="1" title="Workout Type & Title">
@@ -325,7 +326,7 @@ function WorkoutFormFields({ form, setField }) {
             <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={form.workoutType} onChange={(e) => setField('workoutType', e.target.value)}>
               <option value="">— select type —</option>
-              {FORM_WORKOUT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {(workoutTypes || WORKOUT_TYPES).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
           <div>
@@ -381,6 +382,8 @@ function WorkoutFormFields({ form, setField }) {
 export default function CalendarPage() {
   const { docs: assignments } = useCollection('assignments', 'date')
   const { docs: allRunners }  = useCollection('runners', 'name')
+  const allWorkoutTypes       = useWorkoutTypes()
+  const formWorkoutTypes      = allWorkoutTypes.filter((t) => t.value !== 'rest')
 
   const [printMode, setPrintMode] = useState(false)
   const [toast, setToast]         = useState(null)
@@ -416,11 +419,11 @@ export default function CalendarPage() {
       if (!a.date) return
       if (!countMap[a.date]) countMap[a.date] = new Set()
       countMap[a.date].add(a.runnerName || a.runnerId || 'unknown')
-      const key = `${a.date}__${a.workoutTitle || a.workoutType || 'workout'}`
+      const key = `${a.date}__${a.mainWorkout || a.workoutTitle || a.workoutType || 'workout'}`
       if (!map[key]) {
         map[key] = {
           key, date: a.date,
-          title: a.workoutTitle || WORKOUT_TYPES.find(t => t.value === a.workoutType)?.label || 'Workout',
+          title: a.workoutTitle || allWorkoutTypes.find(t => t.value === a.workoutType)?.label || 'Workout',
           workoutType: a.workoutType || '', workoutTitle: a.workoutTitle || '',
           warmup: a.warmup || '', drills: a.drills || '', additionalWarmup: a.additionalWarmup || '',
           mainWorkout: a.mainWorkout || '', cooldown: a.cooldown || '',
@@ -436,16 +439,21 @@ export default function CalendarPage() {
       grouped: Object.values(map),
       runnerCountByDay: Object.fromEntries(Object.entries(countMap).map(([d, s]) => [d, s.size])),
     }
-  }, [assignments])
+  }, [assignments, allWorkoutTypes])
 
-  const calendarEvents = useMemo(() => grouped.map((g) => ({
-    id: g.key,
-    title: g.runnerNames.length > 1 ? `${g.title} · ${g.runnerNames.length}` : g.title,
-    date: g.date,
-    backgroundColor: eventColor(g.workoutType),
-    borderColor: eventColor(g.workoutType),
-    extendedProps: { groupKey: g.key },
-  })), [grouped])
+  const calendarEvents = useMemo(() => grouped.map((g) => {
+    const color = CALENDAR_COLORS[g.workoutType]
+      || allWorkoutTypes.find((t) => t.value === g.workoutType)?.calendarColor
+      || CALENDAR_COLORS.other
+    return {
+      id: g.key,
+      title: g.runnerNames.length > 1 ? `${g.title} · ${g.runnerNames.length}` : g.title,
+      date: g.date,
+      backgroundColor: color,
+      borderColor: color,
+      extendedProps: { groupKey: g.key },
+    }
+  }), [grouped, allWorkoutTypes])
 
   // Create handlers
   function handleDateClick({ dateStr }) {
@@ -530,7 +538,7 @@ export default function CalendarPage() {
   }
 
   if (printMode) return (
-    <PrintSetup grouped={grouped} onBack={() => setPrintMode(false)} />
+    <PrintSetup grouped={grouped} onBack={() => setPrintMode(false)} workoutTypes={allWorkoutTypes} />
   )
 
   return (
@@ -547,12 +555,15 @@ export default function CalendarPage() {
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 mb-5">
-        {WORKOUT_TYPES.filter(t => t.value !== 'rest').map((t) => (
-          <div key={t.value} className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: eventColor(t.value) }} />
-            <span className="text-xs text-gray-600">{t.label}</span>
-          </div>
-        ))}
+        {allWorkoutTypes.filter(t => t.value !== 'rest').map((t) => {
+          const color = CALENDAR_COLORS[t.value] || t.calendarColor || CALENDAR_COLORS.other
+          return (
+            <div key={t.value} className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-xs text-gray-600">{t.label}</span>
+            </div>
+          )
+        })}
       </div>
 
       {/* Calendar */}
@@ -624,7 +635,7 @@ export default function CalendarPage() {
               </div>
               {selectedRunners.length === 0 && <p className="text-xs text-amber-600 mt-2">Select at least one runner to save.</p>}
             </Card>
-            <WorkoutFormFields form={createForm} setField={setCreateField} />
+            <WorkoutFormFields form={createForm} setField={setCreateField} workoutTypes={formWorkoutTypes} />
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setCreateModal(null)} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">Cancel</button>
               <button onClick={handleCreateSave} disabled={creating || selectedRunners.length === 0}
@@ -651,7 +662,7 @@ export default function CalendarPage() {
                 Saving will update this workout for all {editModal.runnerNames.length} runners above.
               </p>
             )}
-            <WorkoutFormFields form={editForm} setField={setEditField} />
+            <WorkoutFormFields form={editForm} setField={setEditField} workoutTypes={formWorkoutTypes} />
             <div className="flex items-center justify-between pt-2">
               <div>
                 {!confirmDel && <button onClick={() => setConfirmDel(true)} className="text-sm text-red-500 hover:text-red-700 font-medium">Delete workout</button>}
