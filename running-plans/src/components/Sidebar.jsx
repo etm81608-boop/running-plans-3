@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useMessenger } from '../contexts/MessengerContext'
 
 // ── Nav groups ─────────────────────────────────────────────────────────────────
 
@@ -77,14 +78,25 @@ const NAV_GROUPS = [
       },
     ],
   },
+  {
+    id: 'admin',
+    label: 'Admin',
+    items: [
+      {
+        to: '/settings', label: 'Settings',
+        icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+      },
+    ],
+  },
 ]
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
   const { logout, currentUser } = useAuth()
+  const { setOpen: openMessenger } = useMessenger()
   const [collapsed, setCollapsed] = useState(false)
-  const [openGroups, setOpenGroups] = useState({ team: true, planning: true, workouts: true, reports: true })
+  const [openGroups, setOpenGroups] = useState({ team: true, planning: true, workouts: true, reports: true, admin: true })
 
   function toggleGroup(id) {
     if (collapsed) return // groups don't collapse when sidebar is icon-only
@@ -191,6 +203,18 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-2 py-3 border-t border-gray-800">
+        {/* Messages button */}
+        <button
+          onClick={() => openMessenger(true)}
+          title="Messages"
+          className={`flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors w-full mb-1 ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-gray-800'}`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
+          </svg>
+          {!collapsed && <span>Messages</span>}
+        </button>
+
         {!collapsed && (
           <p className="text-xs text-gray-600 truncate px-2 mb-2">{currentUser?.email}</p>
         )}
