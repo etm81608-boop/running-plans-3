@@ -120,10 +120,11 @@ export default function RunnerPage() {
         }
         // Load runner doc (profile pic + password)
         const runnerDoc = await getDoc(doc(db, 'runners', runnerId))
-        if (runnerDoc.exists()) {
-          const data = runnerDoc.data()
-          if (data.profilePicUrl) setProfilePicUrl(data.profilePicUrl)
-          if (data.colorTheme)   setColorTheme(data.colorTheme)
+if (runnerDoc.exists()) {
+  const data = runnerDoc.data()
+  if (data.name)         setRunnerName(data.name)
+  if (data.profilePicUrl) setProfilePicUrl(data.profilePicUrl)
+  if (data.colorTheme)   setColorTheme(data.colorTheme)
           if (data.pagePassword) {
             setPagePassword(data.pagePassword)
             const alreadyUnlocked = sessionStorage.getItem(`unlocked_${runnerId}`)
