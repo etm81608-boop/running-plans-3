@@ -17,6 +17,7 @@ import TeamGrid from './pages/TeamGrid'
 import StrengthWorkouts from './pages/StrengthWorkouts'
 import SwimWorkouts from './pages/SwimWorkouts'
 import DataExport from './pages/DataExport'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="strength-workouts" element={<StrengthWorkouts />} />
             <Route path="swim-workouts" element={<SwimWorkouts />} />
             <Route path="export" element={<DataExport />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </AuthProvider>
