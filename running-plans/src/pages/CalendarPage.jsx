@@ -419,10 +419,8 @@ export default function CalendarPage() {
       if (!a.date) return
       if (!countMap[a.date]) countMap[a.date] = new Set()
       countMap[a.date].add(a.runnerName || a.runnerId || 'unknown')
-      const ctKey = Array.isArray(a.crossTraining)
-  ? a.crossTraining.map(ct => `${ct.type||''}:${ct.activity||''}:${ct.duration||''}`).join('|')
-  : ''
-const key = `${a.date}__${a.workoutType||''}__${a.mainWorkout||''}__${a.warmup||''}__${a.drills||''}__${a.cooldown||''}__${ctKey}__${a.notes||''}``
+      const ctKey = a.crossTraining ? JSON.stringify(normaliseCT(a.crossTraining)) : ''
+      const key = `${a.date}__${a.workoutType || ''}__${a.mainWorkout || ''}__${a.warmup || ''}__${a.drills || ''}__${a.cooldown || ''}__${ctKey}__${a.notes || ''}`
       if (!map[key]) {
         map[key] = {
           key, date: a.date,
