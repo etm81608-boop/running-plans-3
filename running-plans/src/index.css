@@ -1,18 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
+ 
 /* FullCalendar overrides */
 .fc .fc-toolbar-title {
   font-size: 1.1rem;
   font-weight: 700;
 }
 .fc .fc-button-primary {
-  background-color: #4f46e5 !important;
-  border-color: #4338ca !important;
+  background-color: #15803d !important;
+  border-color: #166534 !important;
 }
 .fc .fc-button-primary:hover {
-  background-color: #4338ca !important;
+  background-color: #166534 !important;
 }
 .fc .fc-event {
   cursor: pointer;
@@ -22,5 +22,5 @@
   font-weight: 500;
 }
 .fc .fc-daygrid-day.fc-day-today {
-  background-color: #eef2ff !important;
+  background-color: #f0fdf4 !important;
 }
