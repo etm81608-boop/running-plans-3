@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useCollection } from './useCollection'
 import { WORKOUT_TYPES as DEFAULT_TYPES } from '../utils/constants'
- 
+
 /**
  * Returns the merged list of workout types: built-in defaults + any custom
  * types saved in the Firestore `workoutTypes` collection.
@@ -10,7 +10,7 @@ import { WORKOUT_TYPES as DEFAULT_TYPES } from '../utils/constants'
  */
 export function useWorkoutTypes() {
   const { docs: customTypes } = useCollection('workoutTypes', 'createdAt')
- 
+
   const allTypes = useMemo(() => {
     if (!customTypes || customTypes.length === 0) return DEFAULT_TYPES
     const customValues = new Set(customTypes.map((t) => t.value))
@@ -24,6 +24,6 @@ export function useWorkoutTypes() {
     }))
     return [...filteredDefaults, ...mappedCustom]
   }, [customTypes])
- 
+
   return allTypes
 }
