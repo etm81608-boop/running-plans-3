@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 
-const MessengerContext = createContext(null)
+const MessengerContext = createContext({ open: false, setOpen: () => {} })
 
 export function MessengerProvider({ children }) {
   const [open, setOpen] = useState(false)
