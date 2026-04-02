@@ -61,7 +61,7 @@ export default function RunnerPage() {
   const [error,        setError]        = useState(null)
   const [activeTab,    setActiveTab]    = useState('schedule')
   const [weekOffset,   setWeekOffset]   = useState(0)   // 0 = this week
-  const runnerName = assignments[0]?.runnerName || ''
+  const [runnerName, setRunnerName] = useState('')
 
   const LS_KEY = `logged_${runnerId}`
   const [loggedIds,     setLoggedIds]     = useState(() => {
