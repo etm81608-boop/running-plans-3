@@ -105,11 +105,11 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex-shrink-0 bg-gray-950 text-white flex flex-col h-screen sticky top-0 transition-all duration-200 border-r border-gray-800"
-      style={{ width: collapsed ? '56px' : '200px' }}
+      className="flex-shrink-0 text-white flex flex-col h-screen sticky top-0 transition-all duration-200 border-r border-emerald-900"
+      style={{ width: collapsed ? '56px' : '200px', background: 'linear-gradient(180deg, #052e16 0%, #022c22 60%, #083344 100%)' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-3 border-b border-gray-800 min-h-[56px]">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-emerald-900/70 min-h-[56px]">
         {!collapsed && (
           <div className="flex items-center gap-2 min-w-0">
             <img
@@ -123,13 +123,13 @@ export default function Sidebar() {
             </div>
             <div className="min-w-0">
               <p className="font-bold text-xs text-white leading-tight truncate">Episcopal Academy</p>
-              <p className="text-gray-500 text-xs leading-tight truncate">Coach Dashboard</p>
+              <p className="text-emerald-400 text-xs leading-tight truncate">Track & Cross Country</p>
             </div>
           </div>
         )}
         <button
           onClick={() => setCollapsed((v) => !v)}
-          className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-800 transition-colors"
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-emerald-500 hover:text-white hover:bg-emerald-900/60 transition-colors"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -155,12 +155,12 @@ export default function Sidebar() {
                   onClick={() => toggleGroup(group.id)}
                   className="w-full flex items-center justify-between px-3 py-1.5 text-left group"
                 >
-                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest group-hover:text-gray-400 transition-colors">
+                  <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest group-hover:text-emerald-300 transition-colors">
                     {group.label}
                   </span>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className={`h-3 w-3 text-gray-600 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                    className={`h-3 w-3 text-emerald-700 transition-transform ${isOpen ? '' : '-rotate-90'}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -182,8 +182,8 @@ export default function Sidebar() {
                           collapsed ? 'justify-center px-0 py-2' : 'px-2 py-1.5'
                         } ${
                           isActive
-                            ? 'text-white bg-brand-600 border-l-2 border-brand-400'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-800 border-l-2 border-transparent'
+                            ? 'text-white bg-emerald-700/70 border-l-2 border-emerald-400'
+                            : 'text-emerald-200/70 hover:text-white hover:bg-emerald-900/50 border-l-2 border-transparent'
                         }`
                       }
                     >
@@ -195,19 +195,19 @@ export default function Sidebar() {
               )}
 
               {/* Divider between groups */}
-              {!collapsed && <div className="mx-3 mt-2 border-t border-gray-800/60" />}
+              {!collapsed && <div className="mx-3 mt-2 border-t border-emerald-900/60" />}
             </div>
           )
         })}
       </nav>
 
       {/* Footer */}
-      <div className="px-2 py-3 border-t border-gray-800">
+      <div className="px-2 py-3 border-t border-emerald-900/70">
         {/* Messages button */}
         <button
           onClick={() => openMessenger(true)}
           title="Messages"
-          className={`flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors w-full mb-1 ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-gray-800'}`}
+          className={`flex items-center gap-2 text-sm text-emerald-300 hover:text-white transition-colors w-full mb-1 ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-emerald-900/50'}`}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
@@ -216,12 +216,12 @@ export default function Sidebar() {
         </button>
 
         {!collapsed && (
-          <p className="text-xs text-gray-600 truncate px-2 mb-2">{currentUser?.email}</p>
+          <p className="text-xs text-emerald-700 truncate px-2 mb-2">{currentUser?.email}</p>
         )}
         <button
           onClick={logout}
           title="Sign out"
-          className={`flex items-center gap-2 text-sm text-gray-500 hover:text-white transition-colors w-full ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-gray-800'}`}
+          className={`flex items-center gap-2 text-sm text-emerald-400/70 hover:text-white transition-colors w-full ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-emerald-900/50'}`}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
