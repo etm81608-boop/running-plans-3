@@ -90,6 +90,18 @@ const NAV_GROUPS = [
   },
 ]
 
+// EA navy + gold palette (inline so no Tailwind custom config needed)
+const S = {
+  bg:         '#0d1b2e',
+  border:     'rgba(255,255,255,0.07)',
+  sectionTxt: 'rgba(196,163,50,0.6)',
+  itemTxt:    'rgba(255,255,255,0.55)',
+  itemHover:  'rgba(255,255,255,0.06)',
+  activeGold: '#c4a332',
+  activeBg:   'rgba(196,163,50,0.12)',
+  footerTxt:  'rgba(255,255,255,0.35)',
+}
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
@@ -99,40 +111,44 @@ export default function Sidebar() {
   const [openGroups, setOpenGroups] = useState({ team: true, planning: true, workouts: true, reports: true, admin: true })
 
   function toggleGroup(id) {
-    if (collapsed) return // groups don't collapse when sidebar is icon-only
+    if (collapsed) return
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
   return (
     <aside
-      className="flex-shrink-0 text-white flex flex-col h-screen sticky top-0 transition-all duration-200 border-r border-emerald-900"
-      style={{ width: collapsed ? '56px' : '200px', background: 'linear-gradient(180deg, #052e16 0%, #022c22 60%, #083344 100%)' }}
+      className="flex-shrink-0 flex flex-col h-screen sticky top-0 transition-all duration-200"
+      style={{ width: collapsed ? '52px' : '196px', background: S.bg, borderRight: `1px solid ${S.border}` }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-3 border-b border-emerald-900/70 min-h-[56px]">
+      <div className="flex items-center justify-between min-h-[52px] px-3"
+        style={{ borderBottom: `1px solid ${S.border}` }}>
         {!collapsed && (
           <div className="flex items-center gap-2 min-w-0">
             <img
               src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
               alt="EA"
-              className="w-7 h-7 object-contain flex-shrink-0"
+              className="w-6 h-6 object-contain flex-shrink-0"
               onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
             />
-            <div style={{ display: 'none' }} className="w-7 h-7 bg-white rounded flex items-center justify-center flex-shrink-0">
+            <div style={{ display: 'none' }} className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 bg-white">
               <span className="text-gray-900 font-black text-xs">EA</span>
             </div>
             <div className="min-w-0">
-              <p className="font-bold text-xs text-white leading-tight truncate">Episcopal Academy</p>
-              <p className="text-emerald-400 text-xs leading-tight truncate">Track & Cross Country</p>
+              <p className="font-semibold text-white leading-tight truncate" style={{ fontSize: '11px' }}>Episcopal Academy</p>
+              <p className="leading-tight truncate" style={{ fontSize: '10px', color: S.activeGold }}>Track & Cross Country</p>
             </div>
           </div>
         )}
         <button
           onClick={() => setCollapsed((v) => !v)}
-          className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-emerald-500 hover:text-white hover:bg-emerald-900/60 transition-colors"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded transition-colors"
+          style={{ color: S.footerTxt }}
+          onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+          onMouseLeave={e => e.currentTarget.style.color = S.footerTxt}
+          title={collapsed ? 'Expand' : 'Collapse'}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             {collapsed
               ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
               : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
@@ -141,36 +157,31 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Nav groups */}
+      {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2">
         {NAV_GROUPS.map((group) => {
           const isOpen = collapsed ? true : openGroups[group.id]
-
           return (
-            <div key={group.id} className="mb-1">
-
-              {/* Group header (hidden when collapsed) */}
+            <div key={group.id} className="mb-0.5">
               {!collapsed && (
                 <button
                   onClick={() => toggleGroup(group.id)}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-left group"
+                  className="w-full flex items-center justify-between px-3 py-1 text-left"
                 >
-                  <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest group-hover:text-emerald-300 transition-colors">
+                  <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: S.sectionTxt }}>
                     {group.label}
                   </span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className={`h-3 w-3 text-emerald-700 transition-transform ${isOpen ? '' : '-rotate-90'}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg"
+                    className={`h-2.5 w-2.5 transition-transform ${isOpen ? '' : '-rotate-90'}`}
+                    style={{ color: S.sectionTxt }}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
               )}
 
-              {/* Nav items */}
               {isOpen && (
-                <div className={collapsed ? 'px-1.5 space-y-0.5' : 'px-2 space-y-0.5'}>
+                <div className={collapsed ? 'px-1.5 space-y-px' : 'px-1.5 space-y-px mb-1'}>
                   {group.items.map(({ to, label, icon, end }) => (
                     <NavLink
                       key={to}
@@ -178,36 +189,39 @@ export default function Sidebar() {
                       end={end}
                       title={collapsed ? label : undefined}
                       className={({ isActive }) =>
-                        `flex items-center gap-2.5 text-sm font-medium transition-colors ${
-                          collapsed ? 'justify-center px-0 py-2' : 'px-2 py-1.5'
-                        } ${
-                          isActive
-                            ? 'text-white bg-emerald-700/70 border-l-2 border-emerald-400'
-                            : 'text-emerald-200/70 hover:text-white hover:bg-emerald-900/50 border-l-2 border-transparent'
-                        }`
+                        `flex items-center gap-2 rounded transition-all ${collapsed ? 'justify-center py-2 px-0' : 'px-2 py-1.5'}`
                       }
+                      style={({ isActive }) => isActive
+                        ? { color: S.activeGold, background: S.activeBg, borderLeft: `2px solid ${S.activeGold}`, paddingLeft: collapsed ? 0 : '6px' }
+                        : { color: S.itemTxt, borderLeft: '2px solid transparent', paddingLeft: collapsed ? 0 : '6px' }
+                      }
+                      onMouseEnter={e => { if (!e.currentTarget.style.background.includes('0.12')) e.currentTarget.style.background = S.itemHover }}
+                      onMouseLeave={e => { if (!e.currentTarget.style.background.includes('0.12')) e.currentTarget.style.background = 'transparent' }}
                     >
-                      <span className="flex-shrink-0">{icon}</span>
-                      {!collapsed && <span className="truncate">{label}</span>}
+                      <span className="flex-shrink-0 opacity-80">{icon}</span>
+                      {!collapsed && <span className="truncate" style={{ fontSize: '12.5px', fontWeight: 500 }}>{label}</span>}
                     </NavLink>
                   ))}
                 </div>
               )}
 
-              {/* Divider between groups */}
-              {!collapsed && <div className="mx-3 mt-2 border-t border-emerald-900/60" />}
+              {!collapsed && (
+                <div className="mx-3 mt-1" style={{ borderTop: `1px solid ${S.border}` }} />
+              )}
             </div>
           )
         })}
       </nav>
 
       {/* Footer */}
-      <div className="px-2 py-3 border-t border-emerald-900/70">
-        {/* Messages button */}
+      <div className="px-1.5 py-2" style={{ borderTop: `1px solid ${S.border}` }}>
         <button
           onClick={() => openMessenger(true)}
           title="Messages"
-          className={`flex items-center gap-2 text-sm text-emerald-300 hover:text-white transition-colors w-full mb-1 ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-emerald-900/50'}`}
+          className={`flex items-center gap-2 w-full rounded py-1.5 transition-colors mb-px ${collapsed ? 'justify-center' : 'px-2'}`}
+          style={{ color: S.footerTxt, fontSize: '12.5px' }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = S.itemHover }}
+          onMouseLeave={e => { e.currentTarget.style.color = S.footerTxt; e.currentTarget.style.background = 'transparent' }}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
@@ -216,12 +230,16 @@ export default function Sidebar() {
         </button>
 
         {!collapsed && (
-          <p className="text-xs text-emerald-700 truncate px-2 mb-2">{currentUser?.email}</p>
+          <p className="truncate px-2 mb-1" style={{ fontSize: '10px', color: S.footerTxt }}>{currentUser?.email}</p>
         )}
+
         <button
           onClick={logout}
           title="Sign out"
-          className={`flex items-center gap-2 text-sm text-emerald-400/70 hover:text-white transition-colors w-full ${collapsed ? 'justify-center py-2' : 'px-2 py-1.5 hover:bg-emerald-900/50'}`}
+          className={`flex items-center gap-2 w-full rounded py-1.5 transition-colors ${collapsed ? 'justify-center' : 'px-2'}`}
+          style={{ color: S.footerTxt, fontSize: '12.5px' }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = S.itemHover }}
+          onMouseLeave={e => { e.currentTarget.style.color = S.footerTxt; e.currentTarget.style.background = 'transparent' }}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
