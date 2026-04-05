@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useMessenger } from '../contexts/MessengerContext'
-import photoNXR from '../assets/photos/nxr-2025.jpg'
+import photoNXR from '../photos/nxr-2025.jpg'
 
 // ── Nav groups ─────────────────────────────────────────────────────────────────
 
