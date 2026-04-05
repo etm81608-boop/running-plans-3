@@ -8,15 +8,12 @@ import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 import { format, addDays, startOfWeek, parseISO } from 'date-fns'
 import CrossTrainingInput, { ctToText, normaliseCT } from '../components/CrossTrainingInput'
-import { WORKOUT_TYPES } from '../utils/constants'
+import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import useWeather from '../hooks/useWeather'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MAX_RUNNERS = 6
-
-// Hide legacy 'rest' type from the selector
-const FORM_WORKOUT_TYPES = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
 
 const DRILL_OPTIONS = ['Cone / Wicket Drills', 'Hurdle Drills', 'Hip Drills']
 
@@ -82,6 +79,9 @@ function Card({ step, title, children }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function TeamGrid() {
+  const allWorkoutTypes   = useWorkoutTypes()
+  const formWorkoutTypes  = allWorkoutTypes.filter((t) => t.value !== 'rest')
+
   const { docs: allRunners } = useCollection('runners',  'name')
   const { docs: assignments } = useCollection('assignments', 'date')
   const { docs: templates }   = useCollection('workouts',    'createdAt')
@@ -409,7 +409,7 @@ export default function TeamGrid() {
                                       </p>
                                     ) : existing.workoutType ? (
                                       <p className={`text-xs font-semibold leading-snug ${color.text}`}>
-                                        {WORKOUT_TYPES.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
+                                        {allWorkoutTypes.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
                                       </p>
                                     ) : (
                                       <p className="text-xs text-gray-400 italic">Rest</p>
@@ -422,7 +422,7 @@ export default function TeamGrid() {
                                   <div className="space-y-1.5 py-1">
                                     {existing.workoutType && (
                                       <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full ${color.light} ${color.text}`}>
-                                        {WORKOUT_TYPES.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
+                                        {allWorkoutTypes.find(t => t.value === existing.workoutType)?.label || existing.workoutType}
                                       </span>
                                     )}
                                     {existing.workoutTitle && (
@@ -566,7 +566,7 @@ export default function TeamGrid() {
                     onChange={(e) => setField('workoutType', e.target.value)}
                   >
                     <option value="">— select type —</option>
-                    {FORM_WORKOUT_TYPES.map((t) => (
+                    {formWorkoutTypes.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
