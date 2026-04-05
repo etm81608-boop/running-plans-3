@@ -6,14 +6,14 @@ import { format, startOfToday, addDays, isToday, parseISO, isTomorrow } from 'da
 import { getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
 
 // ── Team photo imports (Vite processes these as hashed assets) ────────────────
-import photoTeamXC      from '../assets/photos/team-xc-2025.jpg'
-import photoPennStadium from '../assets/photos/penn-relays-stadium.jpg'
-import photoDelco       from '../assets/photos/delco-champs.jpg'
-import photoNXR         from '../assets/photos/nxr-2025.jpg'
-import photoPennFranklin from '../assets/photos/penn-relays-franklin.jpg'
-import photoDelcoMS     from '../assets/photos/delco-ms-champs.jpg'
-import photoDelcoTrio   from '../assets/photos/delco-champs-trio.jpg'
-import photoCoach       from '../assets/photos/penn-relays-coach.jpg'
+import photoTeamXC      from '../photos/team-xc-2025.jpg'
+import photoPennStadium from '../photos/penn-relays-stadium.jpg'
+import photoDelco       from '../photos/delco-champs.jpg'
+import photoNXR         from '../photos/nxr-2025.jpg'
+import photoPennFranklin from '../photos/penn-relays-franklin.jpg'
+import photoDelcoMS     from '../photos/delco-ms-champs.jpg'
+import photoDelcoTrio   from '../photos/delco-champs-trio.jpg'
+import photoCoach       from '../photos/penn-relays-coach.jpg'
 
 const PHOTOS = [
   { src: photoTeamXC,       caption: '2025 Episcopal Academy Girls Cross Country Team' },
