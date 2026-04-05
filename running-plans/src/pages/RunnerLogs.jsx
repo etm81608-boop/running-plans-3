@@ -1,7 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { collection, getDocs, orderBy, query, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { format, parseISO } from 'date-fns'
+import {
+  format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval,
+  startOfWeek, endOfWeek, isSameMonth, isToday, addMonths,
+} from 'date-fns'
+
+const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -118,114 +123,204 @@ export default function RunnerLogs() {
 
   const isAllView = selectedRunner === '__all__'
 
+  // ── Calendar state ────────────────────────────────────────────────────────
+  const [viewMonth,   setViewMonth]   = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(null)  // 'yyyy-MM-dd'
+  const [selectedLog,  setSelectedLog]  = useState(null)  // log object
+
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(viewMonth)
+    const monthEnd   = endOfMonth(viewMonth)
+    const calStart   = startOfWeek(monthStart, { weekStartsOn: 0 })
+    const calEnd     = endOfWeek(monthEnd,     { weekStartsOn: 0 })
+    return eachDayOfInterval({ start: calStart, end: calEnd })
+  }, [viewMonth])
+
+  function handleDayClick(dateStr) {
+    const logs = byDate[dateStr]
+    if (!logs || logs.length === 0) return
+    setSelectedDate(dateStr)
+    setSelectedLog(null)
+  }
+
+  const logsForSelected = selectedDate ? (byDate[selectedDate] || []) : []
+
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-8">
 
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-5">
         <h1 className="text-2xl font-bold text-gray-900">Runner Logs</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          All submitted workout logs · most recent edit shown per day
+          Click any highlighted day to see who responded
         </p>
       </div>
 
-      {/* Athlete tabs */}
+      {/* Runner tabs */}
       {!loading && runners.length > 0 && (
-        <div className="mb-0 overflow-x-auto">
+        <div className="mb-5 overflow-x-auto">
           <div className="flex gap-0 border-b border-gray-200 min-w-max">
-            <TabButton
-              label="All Runners"
-              active={isAllView}
-              onClick={() => setSelectedRunner('__all__')}
-            />
+            <TabButton label="All Runners" active={isAllView} onClick={() => { setSelectedRunner('__all__'); setSelectedDate(null); setSelectedLog(null) }} />
             {runners.map((name) => (
-              <TabButton
-                key={name}
-                label={name}
-                active={selectedRunner === name}
-                onClick={() => setSelectedRunner(name)}
-              />
+              <TabButton key={name} label={name} active={selectedRunner === name}
+                onClick={() => { setSelectedRunner(name); setSelectedDate(null); setSelectedLog(null) }} />
             ))}
           </div>
         </div>
       )}
 
-      {/* Date filters */}
-      <div className="flex flex-wrap gap-3 mt-5 mb-6">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">From</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide">To</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-          />
-        </div>
-        {(dateFrom || dateTo) && (
-          <button
-            onClick={() => { setDateFrom(''); setDateTo('') }}
-            className="text-xs text-gray-400 hover:text-gray-700 font-semibold underline transition-colors"
-          >
-            Clear filters
-          </button>
-        )}
-        <span className="ml-auto text-xs text-gray-400 self-center font-medium">
-          {filtered.length} log{filtered.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
-      {/* Content */}
       {loading ? (
         <div className="flex items-center gap-3 py-12 justify-center text-gray-400">
-          <div className="w-5 h-5 border-2 border-brand-300 border-t-brand-600 rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-emerald-300 border-t-emerald-600 rounded-full animate-spin" />
           Loading logs…
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="bg-white border border-gray-100 rounded-xl p-12 text-center text-gray-400">
-          No logs found.
-        </div>
       ) : (
-        <div className="space-y-8">
-          {sortedDates.map((dateStr) => (
-            <div key={dateStr}>
-              {/* Date header */}
-              <div className="flex items-center gap-3 mb-3">
-                <h2 className="text-sm font-black text-gray-700 uppercase tracking-wide">
-                  {dateStr !== 'Unknown'
-                    ? format(parseISO(dateStr + 'T12:00:00'), 'EEEE, MMMM d, yyyy')
-                    : 'Unknown Date'}
-                </h2>
-                <div className="flex-1 h-px bg-gray-200" />
-                {isAllView && (
-                  <span className="text-xs text-gray-400">
-                    {byDate[dateStr].length} runner{byDate[dateStr].length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
+        <div className="flex gap-6 items-start">
 
-              {/* Log cards */}
-              <div className="space-y-4">
-                {byDate[dateStr].map((log) => (
-                  <LogCard
-                    key={log.id}
-                    log={log}
-                    assignment={getAssignment(log)}
-                    showRunner={isAllView}
-                    defaultWorkoutOpen={!isAllView}
-                  />
-                ))}
-              </div>
+          {/* ── Calendar ── */}
+          <div className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+            {/* Month navigation */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <button
+                onClick={() => { setViewMonth((m) => addMonths(m, -1)); setSelectedDate(null); setSelectedLog(null) }}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h2 className="text-base font-bold text-gray-900">
+                {format(viewMonth, 'MMMM yyyy')}
+              </h2>
+              <button
+                onClick={() => { setViewMonth((m) => addMonths(m, 1)); setSelectedDate(null); setSelectedLog(null) }}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
-          ))}
+
+            {/* Day-of-week headers */}
+            <div className="grid grid-cols-7 border-b border-gray-100">
+              {DAY_HEADERS.map((d) => (
+                <div key={d} className="py-2 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Day cells */}
+            <div className="grid grid-cols-7">
+              {calendarDays.map((day) => {
+                const dateStr      = format(day, 'yyyy-MM-dd')
+                const logs         = byDate[dateStr] || []
+                const count        = logs.length
+                const inMonth      = isSameMonth(day, viewMonth)
+                const today        = isToday(day)
+                const isSelected   = selectedDate === dateStr
+                const clickable    = count > 0
+
+                return (
+                  <div
+                    key={dateStr}
+                    onClick={() => handleDayClick(dateStr)}
+                    className={`relative min-h-[72px] p-2 border-b border-r border-gray-50 transition-colors
+                      ${!inMonth ? 'bg-gray-50/60' : 'bg-white'}
+                      ${clickable ? 'cursor-pointer' : 'cursor-default'}
+                      ${isSelected ? 'ring-2 ring-inset ring-emerald-500' : ''}
+                      ${clickable && !isSelected ? 'hover:bg-emerald-50/50' : ''}
+                    `}
+                  >
+                    {/* Day number */}
+                    <div className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold
+                      ${today ? 'bg-emerald-600 text-white' : inMonth ? 'text-gray-800' : 'text-gray-300'}
+                    `}>
+                      {format(day, 'd')}
+                    </div>
+
+                    {/* Response count badge — top right */}
+                    {count > 0 && (
+                      <div className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-xs font-bold
+                        ${isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'}
+                      `}>
+                        {count}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ── Detail panel ── */}
+          {selectedDate ? (
+            <div className="w-96 flex-shrink-0">
+              {selectedLog ? (
+                /* Log detail view */
+                <div>
+                  <button
+                    onClick={() => setSelectedLog(null)}
+                    className="flex items-center gap-1.5 text-sm text-emerald-700 font-semibold hover:text-emerald-900 mb-4 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back to {format(parseISO(selectedDate + 'T12:00:00'), 'MMM d')}
+                  </button>
+                  <LogCard
+                    log={selectedLog}
+                    assignment={getAssignment(selectedLog)}
+                    showRunner
+                    defaultWorkoutOpen={false}
+                  />
+                </div>
+              ) : (
+                /* Runner list for this day */
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100">
+                    <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-0.5">
+                      {format(parseISO(selectedDate + 'T12:00:00'), 'EEEE, MMMM d')}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {logsForSelected.length} response{logsForSelected.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {logsForSelected.map((log) => (
+                      <button
+                        key={log.id}
+                        onClick={() => setSelectedLog(log)}
+                        className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-emerald-50 transition-colors text-left group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-xs flex-shrink-0">
+                          {log.runnerName?.trim().split(/\s+/).map((w) => w[0]?.toUpperCase()).join('') || '?'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 text-sm">{log.runnerName || 'Unknown'}</p>
+                          {log.rpe != null && log.rpe !== '' && (
+                            <p className="text-xs text-gray-400">RPE {log.rpe}/10</p>
+                          )}
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-300 group-hover:text-emerald-500 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-96 flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm flex items-center justify-center py-16">
+              <p className="text-sm text-gray-400 text-center px-6">
+                Click a highlighted day on the calendar to see who responded
+              </p>
+            </div>
+          )}
+
         </div>
       )}
     </div>
