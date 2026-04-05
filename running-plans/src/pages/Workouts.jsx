@@ -6,17 +6,18 @@ import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
-import { WORKOUT_TYPES, getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
+import { getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
+import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 
 const EMPTY = {
   title: '', type: 'easy', description: '',
   warmup: '', mainSet: '', cooldown: '', targetPace: '', notes: '',
 }
 
-// Exclude legacy 'rest' from the type dropdown — coaches use 'off_day' or 'recovery' instead
-const TEMPLATE_TYPES = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
-
 export default function Workouts() {
+  const allWorkoutTypes = useWorkoutTypes()
+  const templateTypes   = allWorkoutTypes.filter((t) => t.value !== 'rest')
+
   const { docs: workouts } = useCollection('workouts', 'createdAt')
 
   const [modal,   setModal]   = useState(null)
@@ -103,7 +104,7 @@ export default function Workouts() {
           >
             All
           </button>
-          {TEMPLATE_TYPES.map((t) => (
+          {templateTypes.map((t) => (
             <button
               key={t.value}
               onClick={() => setFilter(t.value)}
@@ -173,7 +174,7 @@ export default function Workouts() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
                 value={current.type} onChange={(e) => set('type', e.target.value)}
               >
-                {TEMPLATE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {templateTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
