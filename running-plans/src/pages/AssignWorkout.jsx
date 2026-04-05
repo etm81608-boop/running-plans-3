@@ -5,7 +5,8 @@ import { useCollection } from '../hooks/useCollection'
 import { sendWorkoutEmail } from '../utils/emailService'
 import Toast from '../components/Toast'
 import CrossTrainingInput from '../components/CrossTrainingInput'
-import { WORKOUT_TYPES, getWorkoutTypeLabel, getWorkoutTypeColor, getWorkoutCalendarColor } from '../utils/constants'
+import { getWorkoutTypeLabel, getWorkoutTypeColor } from '../utils/constants'
+import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import { format } from 'date-fns'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -16,14 +17,14 @@ const DRILL_OPTIONS = [
   'Hip Drills',
 ]
 
-// Exclude legacy 'rest' from the type picker
-const TYPE_OPTIONS = WORKOUT_TYPES.filter((t) => t.value !== 'rest')
-
 const EMPTY_XT = []
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function AssignWorkout() {
+  const allWorkoutTypes = useWorkoutTypes()
+  const typeOptions     = allWorkoutTypes.filter((t) => t.value !== 'rest')
+
   const { docs: runners } = useCollection('runners', 'name')
   const { docs: groups }  = useCollection('groups',  'name')
 
@@ -70,7 +71,7 @@ export default function AssignWorkout() {
     setSaving(true)
 
     const dateStr     = format(new Date(date + 'T12:00:00'), 'MMMM d, yyyy')
-    const typeObj     = WORKOUT_TYPES.find((t) => t.value === workoutType)
+    const typeObj     = allWorkoutTypes.find((t) => t.value === workoutType)
     const autoTitle   = workoutTitle.trim() || `${typeObj?.label ?? workoutType} — ${dateStr}`
     const xtData      = (Array.isArray(crossTraining) && crossTraining.length > 0) ? crossTraining : null
 
@@ -140,7 +141,7 @@ export default function AssignWorkout() {
   const canAssign = date && recipients.length > 0
 
   // ── Color dot for current type ─────────────────────────────────────────────
-  const typeColor = getWorkoutCalendarColor(workoutType)
+  const typeColor = allWorkoutTypes.find((t) => t.value === workoutType)?.calendarColor ?? '#6366f1'
 
   return (
     <div className="p-8 max-w-3xl">
@@ -176,7 +177,7 @@ export default function AssignWorkout() {
                   onChange={(e) => setWorkoutType(e.target.value)}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
                 >
-                  {TYPE_OPTIONS.map((t) => (
+                  {typeOptions.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
