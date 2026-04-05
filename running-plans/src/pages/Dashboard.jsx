@@ -2,27 +2,32 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { format, startOfToday, addDays } from 'date-fns'
+import { format, startOfToday, addDays, isToday, parseISO } from 'date-fns'
 import { getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
 
-function StatCard({ label, value, icon, color }) {
+// Real cross-country & track photos (Unsplash, free license)
+// Each has a gradient fallback in case the image is blocked by the browser
+const HERO_PHOTO = 'https://images.unsplash.com/photo-GJb72h6FeKc?auto=format&fit=crop&w=1400&q=80'
+const FALLBACK_GRADIENT = 'linear-gradient(135deg, #0d1b2e 0%, #1a3a2a 50%, #0d1b2e 100%)'
+
+function StatCard({ label, sublabel, value, icon }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-5 flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${color}`}>
-        {icon}
-      </div>
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+      <div className="text-2xl">{icon}</div>
       <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-2xl font-black text-gray-900 leading-none">{value}</p>
+        <p className="text-sm font-semibold text-gray-700 mt-0.5">{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>
       </div>
     </div>
   )
 }
 
 export default function Dashboard() {
-  const [stats,      setStats]      = useState({ runners: 0, workouts: 0, groups: 0, assignments: 0 })
-  const [upcoming,   setUpcoming]   = useState([])
-  const [loading,    setLoading]    = useState(true)
+  const [stats,    setStats]    = useState({ runners: 0, workouts: 0, groups: 0, assignments: 0 })
+  const [upcoming, setUpcoming] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [imgLoaded, setImgLoaded] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -40,7 +45,7 @@ export default function Dashboard() {
             where('date', '>=', today),
             where('date', '<=', weekEnd),
             orderBy('date', 'asc'),
-            limit(10),
+            limit(8),
           )),
         ])
 
@@ -50,7 +55,6 @@ export default function Dashboard() {
           groups:      gSnap.size,
           assignments: aSnap.size,
         })
-
         setUpcoming(upSnap.docs.map((d) => ({ id: d.id, ...d.data() })))
       } catch (err) {
         console.error(err)
@@ -61,102 +65,164 @@ export default function Dashboard() {
     load()
   }, [])
 
+  const today = format(startOfToday(), 'EEEE, MMMM d')
+
   return (
     <div>
-      {/* Nature/Track Hero Banner */}
-      <div
-        className="relative overflow-hidden px-8 pt-10 pb-8"
-        style={{ background: 'linear-gradient(135deg, #052e16 0%, #14532d 40%, #164e63 100%)' }}
-      >
-        {/* Decorative track lane lines */}
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(255,255,255,0.4) 60px, rgba(255,255,255,0.4) 62px)',
-        }} />
-        {/* Tree silhouette accent */}
-        <svg className="absolute right-0 bottom-0 opacity-10 h-32" viewBox="0 0 200 120" fill="white" xmlns="http://www.w3.org/2000/svg">
-          <polygon points="100,0 140,60 120,60 150,100 110,100 110,120 90,120 90,100 50,100 80,60 60,60" />
-          <polygon points="160,20 190,70 175,70 195,110 165,110 165,120 155,120 155,110 125,110 145,70 130,70" />
-          <polygon points="30,30 60,80 45,80 65,115 35,115 35,120 25,120 25,115 -5,115 15,80 0,80" />
-        </svg>
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-1">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span className="text-emerald-400 text-xs font-semibold uppercase tracking-widest">Coach Dashboard</span>
+
+      {/* ── Hero Banner ── */}
+      <div className="relative overflow-hidden" style={{ height: '200px' }}>
+        {/* Gradient fallback always visible underneath */}
+        <div className="absolute inset-0" style={{ background: FALLBACK_GRADIENT }} />
+
+        {/* Real photo on top — hides itself on error */}
+        <img
+          src={HERO_PHOTO}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+          style={{ opacity: imgLoaded ? 1 : 0 }}
+          onLoad={() => setImgLoaded(true)}
+          onError={(e) => { e.target.style.display = 'none' }}
+        />
+
+        {/* Dark overlay so text is always readable */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(13,27,46,0.88) 40%, rgba(13,27,46,0.5) 100%)' }} />
+
+        {/* Content */}
+        <div className="relative h-full flex flex-col justify-end px-8 pb-6">
+          <div className="flex items-end justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <img
+                  src="https://resources.finalsite.net/images/v1752766793/episcopalacademypa/iki09ehlwxicgcugftmq/sheid_full.svg"
+                  alt="EA"
+                  className="h-5 w-5 object-contain opacity-80"
+                  onError={(e) => e.target.style.display = 'none'}
+                />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#c4a332' }}>
+                  Episcopal Academy
+                </span>
+              </div>
+              <h1 className="text-2xl font-black text-white leading-tight">Track & Cross Country</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>{today}</p>
+            </div>
+            <Link
+              to="/assign"
+              className="text-sm font-semibold px-4 py-2 rounded-lg transition-opacity hover:opacity-90 flex-shrink-0"
+              style={{ background: '#c4a332', color: '#0d1b2e' }}
+            >
+              + Assign Workout
+            </Link>
           </div>
-          <h1 className="text-2xl font-bold text-white">Welcome back, Coach.</h1>
-          <p className="text-emerald-200/70 text-sm mt-1">Here's your team overview — let's have a great season.</p>
         </div>
       </div>
 
-      <div className="p-8">
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-          <StatCard label="Runners"         value={stats.runners}     icon="🏃" color="bg-emerald-50" />
-          <StatCard label="Workout Library" value={stats.workouts}    icon="📋" color="bg-sky-50" />
-          <StatCard label="Training Groups" value={stats.groups}      icon="👥" color="bg-teal-50" />
-          <StatCard label="Assignments"     value={stats.assignments} icon="📅" color="bg-cyan-50" />
+      <div className="p-6 max-w-5xl">
+
+        {/* ── Stats ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <StatCard
+            label="Athletes on Roster"
+            sublabel="registered this season"
+            value={loading ? '—' : stats.runners}
+            icon="🏃"
+          />
+          <StatCard
+            label="Workout Templates"
+            sublabel="in your library"
+            value={loading ? '—' : stats.workouts}
+            icon="📋"
+          />
+          <StatCard
+            label="Training Groups"
+            sublabel="active groups"
+            value={loading ? '—' : stats.groups}
+            icon="👥"
+          />
+          <StatCard
+            label="Workouts Assigned"
+            sublabel="total this season"
+            value={loading ? '—' : stats.assignments}
+            icon="📅"
+          />
         </div>
 
-        {/* Upcoming workouts */}
-        <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-gray-900">Upcoming Workouts (next 14 days)</h2>
-            <Link to="/calendar" className="text-sm text-emerald-700 hover:underline font-medium">
-              View calendar →
+        {/* ── Upcoming workouts ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Upcoming Workouts</h2>
+              <p className="text-xs text-gray-400">Next 14 days</p>
+            </div>
+            <Link to="/calendar" className="text-xs font-semibold hover:underline" style={{ color: '#c4a332' }}>
+              Open calendar →
             </Link>
           </div>
 
           {loading ? (
-            <p className="text-sm text-gray-400">Loading…</p>
+            <div className="px-5 py-8 text-center text-sm text-gray-400">Loading…</div>
           ) : upcoming.length === 0 ? (
-            <div className="text-center py-10">
-              <p className="text-gray-400 text-sm">No workouts scheduled in the next 14 days.</p>
-              <Link to="/assign" className="mt-3 inline-block text-sm text-emerald-700 font-medium hover:underline">
+            <div className="px-5 py-10 text-center">
+              <p className="text-sm text-gray-400 mb-2">No workouts scheduled in the next 14 days.</p>
+              <Link to="/assign" className="text-sm font-semibold hover:underline" style={{ color: '#c4a332' }}>
                 Assign a workout →
               </Link>
             </div>
           ) : (
-            <div className="space-y-3">
-              {upcoming.map((a) => (
-                <div key={a.id} className="flex items-center gap-4 p-3 rounded-xl bg-emerald-50/40 hover:bg-emerald-50 transition-colors">
-                  <div className="text-center min-w-[48px]">
-                    <p className="text-xs text-emerald-500 uppercase font-medium">{a.date ? format(new Date(a.date + 'T12:00:00'), 'MMM') : ''}</p>
-                    <p className="text-xl font-bold text-gray-800">{a.date ? format(new Date(a.date + 'T12:00:00'), 'd') : ''}</p>
+            <div className="divide-y divide-gray-50">
+              {upcoming.map((a) => {
+                const dateObj = a.date ? parseISO(a.date + 'T12:00:00') : null
+                const isItToday = dateObj ? isToday(dateObj) : false
+                return (
+                  <div key={a.id} className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors">
+                    {/* Date column */}
+                    <div className="text-center min-w-[40px]">
+                      <p className="text-xs font-semibold uppercase" style={{ color: isItToday ? '#c4a332' : '#9ca3af' }}>
+                        {dateObj ? format(dateObj, 'MMM') : ''}
+                      </p>
+                      <p className={`text-xl font-black leading-none ${isItToday ? 'text-gray-900' : 'text-gray-700'}`}>
+                        {dateObj ? format(dateObj, 'd') : ''}
+                      </p>
+                      <p className="text-xs text-gray-400">{dateObj ? format(dateObj, 'EEE') : ''}</p>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="w-px h-10 bg-gray-100 flex-shrink-0" />
+
+                    {/* Workout info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{a.workoutTitle || 'Workout'}</p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {Array.isArray(a.runnerNames) && a.runnerNames.length > 0
+                          ? a.runnerNames.slice(0, 3).join(', ') + (a.runnerNames.length > 3 ? ` +${a.runnerNames.length - 3} more` : '')
+                          : a.groupName || 'All runners'}
+                      </p>
+                    </div>
+
+                    {/* Type badge */}
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${getWorkoutTypeColor(a.workoutType)}`}>
+                      {getWorkoutTypeLabel(a.workoutType)}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">{a.workoutTitle || 'Workout'}</p>
-                    <p className="text-xs text-gray-500">
-                      {Array.isArray(a.runnerNames) && a.runnerNames.length > 0
-                        ? a.runnerNames.slice(0, 3).join(', ') + (a.runnerNames.length > 3 ? ` +${a.runnerNames.length - 3}` : '')
-                        : a.groupName || 'All runners'}
-                    </p>
-                  </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${getWorkoutTypeColor(a.workoutType)}`}>
-                    {getWorkoutTypeLabel(a.workoutType)}
-                  </span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
 
-        {/* Quick actions */}
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Link to="/assign"   className="text-white rounded-xl p-4 text-center font-medium transition-colors" style={{ background: 'linear-gradient(135deg, #15803d, #0369a1)' }}
-            onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
-            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-          >
-            + Assign Workout
-          </Link>
-          <Link to="/roster"   className="bg-white border border-emerald-200 hover:bg-emerald-50 text-gray-700 rounded-xl p-4 text-center font-medium transition-colors">
+        {/* ── Quick links ── */}
+        <div className="mt-4 flex gap-3">
+          <Link to="/roster" className="flex-1 text-center text-xs font-semibold py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
             Manage Roster
           </Link>
-          <Link to="/workouts" className="bg-white border border-emerald-200 hover:bg-emerald-50 text-gray-700 rounded-xl p-4 text-center font-medium transition-colors">
+          <Link to="/workouts" className="flex-1 text-center text-xs font-semibold py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
             Workout Library
           </Link>
+          <Link to="/logs" className="flex-1 text-center text-xs font-semibold py-2.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+            Runner Logs
+          </Link>
         </div>
+
       </div>
     </div>
   )
