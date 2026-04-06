@@ -54,7 +54,7 @@ function PhotoHero() {
   const photo = PHOTOS[idx]
 
   return (
-    <div style={{ position: 'relative', height: '220px', overflow: 'hidden', background: '#0d1b2e' }}>
+    <div style={{ position: 'relative', height: '500px', overflow: 'hidden', background: '#0d1b2e' }}>
       {/* Photo */}
       <img
         src={photo.src}
