@@ -6,22 +6,13 @@ import { format, startOfToday, addDays, isToday, parseISO, isTomorrow } from 'da
 import { getWorkoutTypeColor, getWorkoutTypeLabel } from '../utils/constants'
 
 // ── Team photo imports (Vite processes these as hashed assets) ────────────────
-import photoTeamXC      from '../photos/team-xc-2025.jpg'
-import photoPennStadium from '../photos/penn-relays-stadium.jpg'
-import photoDelco       from '../photos/delco-champs.jpg'
-import photoNXR         from '../photos/nxr-2025.jpg'
-import photoPennFranklin from '../photos/penn-relays-franklin.jpg'
-import photoDelcoMS     from '../photos/delco-ms-champs.jpg'
-import photoDelcoTrio   from '../photos/delco-champs-trio.jpg'
-import photoCoach       from '../photos/penn-relays-coach.jpg'
-
 const PHOTOS = [
-  { src: photoTeamXC,       caption: '2025 Episcopal Academy Girls Cross Country Team' },
-  { src: photoPennStadium,  caption: 'Penn Relays · Franklin Field' },
-  { src: photoDelco,        caption: '2025 Delaware County Cross Country Champions' },
-  { src: photoNXR,          caption: 'NXR Northeast Championship 2025 · Bowdoin Park, NY' },
-  { src: photoPennFranklin, caption: 'Penn Relays · Penn Campus' },
-  { src: photoDelcoMS,      caption: '2025 Delaware County Middle School XC Champions' },
+  { src: '/photos/team-xc-2025.jpg',        caption: '2025 Episcopal Academy Girls Cross Country Team' },
+  { src: '/photos/penn-relays-stadium.jpg',  caption: 'Penn Relays · Franklin Field' },
+  { src: '/photos/delco-champs.jpg',         caption: '2025 Delaware County Cross Country Champions' },
+  { src: '/photos/nxr-2025.jpg',             caption: 'NXR Northeast Championship 2025 · Bowdoin Park, NY' },
+  { src: '/photos/penn-relays-franklin.jpg', caption: 'Penn Relays · Penn Campus' },
+  { src: '/photos/delco-ms-champs.jpg',      caption: '2025 Delaware County Middle School XC Champions' },
 ]
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -370,7 +361,7 @@ export default function Dashboard() {
           {/* Champs photo card */}
           <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid #e5e7eb' }}>
             <img
-              src={photoDelcoTrio}
+              src="/photos/delco-champs-trio.jpg"
               alt="2025 Delco XC Champions"
               style={{ width: '100%', height: '110px', objectFit: 'cover', objectPosition: 'center 15%', display: 'block' }}
             />
