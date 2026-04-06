@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useMessenger } from '../contexts/MessengerContext'
-import photoNXR from '../photos/nxr-2025.jpg'
 
 // ── Nav groups ─────────────────────────────────────────────────────────────────
 
@@ -218,7 +217,7 @@ export default function Sidebar() {
       {!collapsed && (
         <div style={{ margin: '0 8px 8px', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${S.border}`, flexShrink: 0 }}>
           <img
-            src={photoNXR}
+            src="/photos/nxr-2025.jpg"
             alt="EA Cross Country"
             style={{ width: '100%', height: '90px', objectFit: 'cover', objectPosition: 'center 25%', display: 'block' }}
           />
