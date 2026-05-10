@@ -9,6 +9,7 @@ import Workouts from './pages/Workouts'
 import Groups from './pages/Groups'
 import CalendarPage from './pages/CalendarPage'
 import AssignWorkout from './pages/AssignWorkout'
+import WeeklyEntry from './pages/WeeklyEntry'
 import PublicWorkout from './pages/PublicWorkout'
 import RunnerLogs from './pages/RunnerLogs'
 import RunnerPage from './pages/RunnerPage'
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="groups" element={<Groups />} />
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="assign" element={<AssignWorkout />} />
+            <Route path="weekly-entry" element={<WeeklyEntry />} />
             <Route path="logs" element={<RunnerLogs />} />
             <Route path="meets" element={<Meets />} />
             <Route path="team-grid" element={<TeamGrid />} />
