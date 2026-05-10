@@ -10,6 +10,7 @@ import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import Toast from '../components/Toast'
+import CrossTrainingInput, { ctToText } from '../components/CrossTrainingInput'
 import { format, addDays, parseISO } from 'date-fns'
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -51,14 +52,15 @@ const COLUMNS = [
 ]
 
 const blankRow = () => ({
-  workoutType:  'easy',
-  workoutTitle: '',
-  warmup:       '',
-  drills:       '',
-  mainWorkout:  '',
-  cooldown:     '',
-  notes:        '',
-  recipients:   null, // null = use default; otherwise array of runner ids
+  workoutType:    'easy',
+  workoutTitle:   '',
+  warmup:         '',
+  drills:         '',
+  mainWorkout:    '',
+  cooldown:       '',
+  notes:          '',
+  crossTraining:  [],   // array of CT items (see CrossTrainingInput.jsx)
+  recipients:     null, // null = use default; otherwise array of runner ids
 })
 
 /** Find the most recent Monday on or before `d`. */
@@ -80,6 +82,7 @@ function rowHasContent(r) {
     r.mainWorkout.trim() ||
     r.cooldown.trim() ||
     r.notes.trim() ||
+    (Array.isArray(r.crossTraining) && r.crossTraining.length > 0) ||
     (r.workoutType && r.workoutType !== 'easy')
   )
 }
@@ -115,6 +118,7 @@ export default function WeeklyEntry() {
   const [showSaveTemplate,  setShowSaveTemplate]  = useState(false)
   const [templateName,      setTemplateName]      = useState('')
   const [overrideRow,       setOverrideRow]       = useState(null) // row idx with open recipient override popover
+  const [xtRow,             setXtRow]             = useState(null) // row idx with open cross-training popover
 
   // ── Derived: weekly dates ───────────────────────────────────────────────────
   const weekDates = useMemo(() => {
@@ -160,9 +164,19 @@ export default function WeeklyEntry() {
   const fillEntireColumn = useCallback((key) => {
     setRows((prev) => {
       const value = prev[0][key]
-      return prev.map((r) => ({ ...r, [key]: value }))
+      // Deep-copy arrays/objects so days don't share the same reference
+      const clone = (v) => Array.isArray(v) ? v.map((x) => ({ ...x })) : v
+      return prev.map((r) => ({ ...r, [key]: clone(value) }))
     })
     setToast({ message: `Copied row 1 to all 7 days`, type: 'success' })
+  }, [])
+
+  const fillCrossTrainingDownFromRow = useCallback((rowIdx) => {
+    setRows((prev) => {
+      const value = prev[rowIdx].crossTraining || []
+      return prev.map((r, i) => i > rowIdx ? { ...r, crossTraining: value.map((x) => ({ ...x })) } : r)
+    })
+    setToast({ message: 'Filled cross training to remaining days', type: 'success' })
   }, [])
 
   const clearWeek = useCallback(() => {
@@ -328,7 +342,7 @@ export default function WeeklyEntry() {
             additionalWarmup: '',
             mainWorkout:      r.mainWorkout.trim(),
             cooldown:         r.cooldown.trim(),
-            crossTraining:    null,
+            crossTraining:    (Array.isArray(r.crossTraining) && r.crossTraining.length > 0) ? r.crossTraining : null,
             notes:            r.notes.trim(),
             createdAt:        serverTimestamp(),
           })
@@ -544,6 +558,18 @@ export default function WeeklyEntry() {
                   </div>
                 </th>
               ))}
+              <th className="border-b border-r border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-600 align-bottom" style={{ width: 200, minWidth: 200 }}>
+                <div className="flex items-center justify-between gap-1">
+                  <span>Cross Training</span>
+                  <button
+                    onClick={() => fillEntireColumn('crossTraining')}
+                    title="Copy row 1's cross training to all 7 days"
+                    className="text-gray-400 hover:text-brand-600 text-[10px] font-medium px-1 rounded hover:bg-brand-50"
+                  >
+                    ⤓ all
+                  </button>
+                </div>
+              </th>
               <th className="border-b border-gray-200 px-3 py-2 text-left text-xs font-semibold text-gray-600" style={{ width: 200 }}>
                 Recipients
               </th>
@@ -591,6 +617,27 @@ export default function WeeklyEntry() {
                     )}
                   </td>
                 ))}
+
+                {/* Cross Training */}
+                <td className="border-b border-r border-gray-200 px-2 py-1 align-top text-xs relative group" style={{ width: 200 }}>
+                  <CrossTrainingCell
+                    row={row}
+                    rowIdx={ri}
+                    isOpen={xtRow === ri}
+                    onOpen={() => setXtRow(xtRow === ri ? null : ri)}
+                    onChange={(v) => updateCell(ri, 'crossTraining', v)}
+                  />
+                  {ri < 6 && (row.crossTraining?.length > 0) && (
+                    <button
+                      onClick={() => fillCrossTrainingDownFromRow(ri)}
+                      title="Copy this cross training down to remaining days"
+                      className="absolute bottom-1 right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded opacity-0 group-hover:opacity-90 hover:opacity-100 hover:scale-110 flex items-center justify-center transition-all"
+                      style={{ lineHeight: 1 }}
+                    >
+                      ↓
+                    </button>
+                  )}
+                </td>
 
                 {/* Recipients */}
                 <td className="border-b border-gray-200 px-2 py-1 align-top text-xs" style={{ width: 200 }}>
@@ -827,3 +874,60 @@ function RecipientsCell({ row, rowIdx, runners, groups, defaultCount, isOpen, on
     </div>
   )
 }
+
+// ── Cross Training cell (per-row popover wrapping CrossTrainingInput) ─────────
+
+function CrossTrainingCell({ row, rowIdx, isOpen, onOpen, onChange }) {
+  const popoverRef = useRef(null)
+  const items = Array.isArray(row.crossTraining) ? row.crossTraining : []
+  const summary = ctToText(items)
+  const count   = items.filter((x) => x && x.type).length
+
+  useEffect(() => {
+    if (!isOpen) return
+    function onDocClick(e) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) onOpen()
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [isOpen, onOpen])
+
+  return (
+    <div className="relative">
+      <button
+        onClick={onOpen}
+        className={`w-full text-left px-2 py-1.5 rounded-md border text-xs transition-colors ${
+          count > 0
+            ? 'border-teal-300 bg-teal-50 text-teal-800 font-medium'
+            : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-gray-50'
+        }`}
+        title={summary || 'Add cross training'}
+      >
+        {count > 0
+          ? <span className="block truncate">🏊 {summary}</span>
+          : <>+ Add cross training</>}
+      </button>
+
+      {isOpen && (
+        <div
+          ref={popoverRef}
+          className="absolute right-0 mt-1 z-30 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-gray-700">Cross Training for {DAY_LABELS[rowIdx]}</p>
+            {count > 0 && (
+              <button
+                onClick={() => onChange([])}
+                className="text-[10px] text-gray-500 hover:text-red-600 font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <CrossTrainingInput value={items} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  )
+}
+
