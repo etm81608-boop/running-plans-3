@@ -152,20 +152,16 @@ export default function Roster() {
                 <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-5 py-3 font-medium text-gray-900">
                     <div className="flex items-center gap-2">
-                      <Link to={`/runner/${r.id}`} className="hover:text-brand-600 hover:underline">
-                        {r.name}
-                      </Link>
-                      <a
-                        href={`/runner/${r.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open runner page (shareable link)"
+                      <span>{r.name}</span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}/runner/${r.id}`)}
+                        title="Copy shareable link"
                         className="text-gray-300 hover:text-brand-500 transition-colors"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
-                      </a>
+                      </button>
                     </div>
                   </td>
                   <td className="px-5 py-3 text-gray-600">{r.grade ? `Grade ${r.grade}` : '—'}</td>
