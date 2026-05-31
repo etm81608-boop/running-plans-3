@@ -154,7 +154,7 @@ export default function Roster() {
                     <div className="flex items-center gap-2">
                       <span>{r.name}</span>
                       <button
-                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}/runner/${r.id}`)}
+                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}/#/runner/${r.id}`)}
                         title="Copy shareable link"
                         className="text-gray-300 hover:text-brand-500 transition-colors"
                       >
