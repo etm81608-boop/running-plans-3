@@ -2,9 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { format, parseISO, isPast, isToday } from 'date-fns'
 import {
   collection, query, where, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, orderBy, writeBatch,
+  doc, orderBy, writeBatch, getDoc, setDoc,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
+
+const SEASON_OPTIONS = [
+  'Cross Country',
+  'Winter Track and Field',
+  'Spring Track and Field',
+]
 
 // ── Seed data (written to Firestore on first load if collection is empty) ─────
 
@@ -203,10 +209,24 @@ export default function Meets() {
   const [loading, setLoading]   = useState(true)
   const [modal, setModal]       = useState(null)   // null | { type, meet? }
   const [deleting, setDeleting] = useState(null)   // meet id being confirmed
+  const [season, setSeason]     = useState('Spring Track and Field')
+  const [editingSeason, setEditingSeason] = useState(false)
+
+  async function handleSeasonChange(newSeason) {
+    setSeason(newSeason)
+    setEditingSeason(false)
+    await setDoc(doc(db, 'settings', 'meets'), { season: newSeason }, { merge: true })
+  }
 
   // ── Load / seed ────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
+      // Load season setting
+      const settingsSnap = await getDoc(doc(db, 'settings', 'meets'))
+      if (settingsSnap.exists() && settingsSnap.data().season) {
+        setSeason(settingsSnap.data().season)
+      }
+
       const snap = await getDocs(query(collection(db, 'meets'), orderBy('date')))
       if (!snap.empty) {
         setMeets(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
@@ -260,14 +280,40 @@ export default function Meets() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Meet Schedule</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Episcopal Academy · Spring 2026</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-sm text-gray-500">Episcopal Academy ·</span>
+            {editingSeason ? (
+              <select
+                autoFocus
+                className="text-sm border border-brand-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white"
+                value={season}
+                onChange={(e) => handleSeasonChange(e.target.value)}
+                onBlur={() => setEditingSeason(false)}
+              >
+                {SEASON_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            ) : (
+              <button
+                onClick={() => setEditingSeason(true)}
+                className="text-sm text-gray-500 hover:text-brand-600 flex items-center gap-1 group"
+                title="Click to change season"
+              >
+                {season}
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 opacity-0 group-hover:opacity-60 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 11l6-6 3 3-6 6H9v-3z" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <MeetColumn
-          title="Girls Varsity Track & Field"
+          title={`Girls Varsity ${season}`}
           emoji="🏟️"
           accentClass="border-brand-400"
           meets={varsity}
@@ -276,7 +322,7 @@ export default function Meets() {
           onDelete={(m) => setDeleting(m.id)}
         />
         <MeetColumn
-          title="Middle School Track"
+          title={`Middle School ${season}`}
           emoji="🏃"
           accentClass="border-emerald-400"
           meets={ms}
