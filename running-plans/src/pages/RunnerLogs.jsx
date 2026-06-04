@@ -275,6 +275,10 @@ export default function RunnerLogs() {
                     assignment={getAssignment(selectedLog)}
                     showRunner
                     defaultWorkoutOpen={false}
+                    onCommentSaved={(logId, comment) => {
+                      setAllLogs((prev) => prev.map((l) => l.id === logId ? { ...l, coachComment: comment } : l))
+                      setSelectedLog((prev) => prev && prev.id === logId ? { ...prev, coachComment: comment } : prev)
+                    }}
                   />
                 </div>
               ) : (
@@ -346,7 +350,7 @@ function TabButton({ label, active, onClick }) {
 
 // ── Log Card ──────────────────────────────────────────────────────────────────
 
-function LogCard({ log, assignment, showRunner, defaultWorkoutOpen }) {
+function LogCard({ log, assignment, showRunner, defaultWorkoutOpen, onCommentSaved }) {
   const hasSplits   = log.splits && log.splits.length > 0
   const submittedAt = log.updatedAt || log.submittedAt
   const wasEdited   = !!log.updatedAt
@@ -367,6 +371,7 @@ function LogCard({ log, assignment, showRunner, defaultWorkoutOpen }) {
         coachCommentedAt: serverTimestamp(),
       })
       setSavedComment(commentDraft.trim())
+      onCommentSaved?.(log.id, commentDraft.trim())
     } catch (err) {
       setCommentError('Could not save. Try again.')
     } finally {
