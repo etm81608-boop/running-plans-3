@@ -73,6 +73,7 @@ export default function RunnerPage() {
   const [profilePicUrl,    setProfilePicUrl]    = useState(null)
   const [uploading,        setUploading]        = useState(false)
   const [allMeets,         setAllMeets]         = useState([])
+  const [meetsError,       setMeetsError]       = useState(false)
   const [coachMessages,          setCoachMessages]          = useState([])
   const [colorTheme,             setColorTheme]             = useState('rose')
   const [coachCommentsByAssignment, setCoachCommentsByAssignment] = useState({})
@@ -120,11 +121,11 @@ export default function RunnerPage() {
         }
         // Load runner doc (profile pic + password)
         const runnerDoc = await getDoc(doc(db, 'runners', runnerId))
-if (runnerDoc.exists()) {
-  const data = runnerDoc.data()
-  if (data.name)         setRunnerName(data.name)
-  if (data.profilePicUrl) setProfilePicUrl(data.profilePicUrl)
-  if (data.colorTheme)   setColorTheme(data.colorTheme)
+        if (runnerDoc.exists()) {
+          const data = runnerDoc.data()
+          if (data.name)         setRunnerName(data.name)
+          if (data.profilePicUrl) setProfilePicUrl(data.profilePicUrl)
+          if (data.colorTheme)   setColorTheme(data.colorTheme)
           if (data.pagePassword) {
             setPagePassword(data.pagePassword)
             const alreadyUnlocked = sessionStorage.getItem(`unlocked_${runnerId}`)
@@ -144,7 +145,7 @@ if (runnerDoc.exists()) {
   useEffect(() => {
     getDocs(query(collection(db, 'meets'), orderBy('date')))
       .then((snap) => setAllMeets(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
-      .catch(() => {})
+      .catch(() => setMeetsError(true))
   }, [])
 
   // Subscribe to coach messages for this runner
@@ -162,20 +163,20 @@ if (runnerDoc.exists()) {
     return unsub
   }, [runnerId])
 
-  // Load workout logs to check for coach comments
+  // Subscribe to workout logs for real-time coach comments
   useEffect(() => {
-    getDocs(query(collection(db, 'workoutLogs'), where('runnerId', '==', runnerId)))
-      .then((snap) => {
-        const map = {}
-        snap.docs.forEach((d) => {
-          const data = d.data()
-          if (data.coachComment && data.assignmentId) {
-            map[data.assignmentId] = data.coachComment
-          }
-        })
-        setCoachCommentsByAssignment(map)
+    const q = query(collection(db, 'workoutLogs'), where('runnerId', '==', runnerId))
+    const unsub = onSnapshot(q, (snap) => {
+      const map = {}
+      snap.docs.forEach((d) => {
+        const data = d.data()
+        if (data.coachComment && data.assignmentId) {
+          map[data.assignmentId] = data.coachComment
+        }
       })
-      .catch(() => {})
+      setCoachCommentsByAssignment(map)
+    }, () => {})
+    return unsub
   }, [runnerId])
 
   async function handlePicUpload(file) {
@@ -694,6 +695,16 @@ if (runnerDoc.exists()) {
       {activeTab === 'meets' && (
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h2 className="text-xs font-black uppercase tracking-widest text-rose-400 mb-5">Season Meet Schedule</h2>
+
+          {meetsError && (
+            <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <span className="text-amber-500 text-lg leading-none mt-0.5">⚠️</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Meet schedule couldn't be loaded</p>
+                <p className="text-xs text-amber-600 mt-0.5">There was a problem connecting to the schedule. Please try refreshing the page, or check back later.</p>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-5">
 
