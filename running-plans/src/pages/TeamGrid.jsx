@@ -138,6 +138,7 @@ export default function TeamGrid() {
   }, [assignments])
 
   const [modal,      setModal]      = useState(null)
+  const [modalDate,  setModalDate]  = useState('')     // editable date inside cell modal
   const [form,       setForm]       = useState(EMPTY_FORM)
   const [saving,     setSaving]     = useState(false)
   const [deleting,   setDeleting]   = useState(false)
@@ -146,9 +147,15 @@ export default function TeamGrid() {
   const [templateId, setTemplateId] = useState('')
   const [clipboard,  setClipboard]  = useState(null)  // copied workout form fields
 
+  // Move-column state (bulk date change for all selected runners on a given day)
+  const [moveCol,      setMoveCol]      = useState(null)  // { fromDate: 'yyyy-mm-dd' }
+  const [moveToDate,   setMoveToDate]   = useState('')
+  const [movingCol,    setMovingCol]    = useState(false)
+
   function openCell(runner, dateStr) {
     const existing = assignmentsByRunnerDate[runner.id]?.[dateStr] || null
     setModal({ runnerId: runner.id, runnerName: runner.name, date: dateStr, existing })
+    setModalDate(dateStr)
     setForm(existing ? {
       workoutType:      existing.workoutType      || '',
       workoutTitle:     existing.workoutTitle     || '',
@@ -167,6 +174,7 @@ export default function TeamGrid() {
 
   function closeModal() {
     setModal(null)
+    setModalDate('')
     setConfirmDel(false)
     setTemplateId('')
   }
@@ -206,11 +214,12 @@ export default function TeamGrid() {
   async function handleSave() {
     if (!modal) return
     setSaving(true)
-    const dateStr = format(parseISO(modal.date + 'T12:00:00'), 'MMMM d, yyyy')
+    const resolvedDate = modalDate || modal.date
+    const dateStr = format(parseISO(resolvedDate + 'T12:00:00'), 'MMMM d, yyyy')
     const data = {
       runnerId:         modal.runnerId,
       runnerName:       modal.runnerName,
-      date:             modal.date,
+      date:             resolvedDate,
       dateStr,
       workoutType:      form.workoutType,
       workoutTitle:     form.workoutTitle.trim() || form.mainWorkout.trim().slice(0, 60) || 'Workout',
@@ -250,6 +259,27 @@ export default function TeamGrid() {
       setToast({ message: err.message, type: 'error' })
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleMoveColumn() {
+    if (!moveCol || !moveToDate) return
+    setMovingCol(true)
+    try {
+      const newDateStr = format(parseISO(moveToDate + 'T12:00:00'), 'MMMM d, yyyy')
+      const docs = selectedRunners
+        .map((r) => assignmentsByRunnerDate[r.id]?.[moveCol.fromDate])
+        .filter(Boolean)
+      await Promise.all(
+        docs.map((a) => updateDoc(doc(db, 'assignments', a.id), { date: moveToDate, dateStr: newDateStr }))
+      )
+      setToast({ message: `Moved ${docs.length} workout${docs.length !== 1 ? 's' : ''} to ${newDateStr}!`, type: 'success' })
+      setMoveCol(null)
+      setMoveToDate('')
+    } catch (err) {
+      setToast({ message: 'Move failed: ' + err.message, type: 'error' })
+    } finally {
+      setMovingCol(false)
     }
   }
 
@@ -345,6 +375,20 @@ export default function TeamGrid() {
                               <span className={isToday ? 'text-blue-200' : 'text-blue-500'}> · {weatherByDate[dateStr].precipPct}%</span>
                             )}
                           </p>
+                        )}
+                        {/* Move-day button — only when selected runners have workouts on this day */}
+                        {selectedRunners.some((r) => assignmentsByRunnerDate[r.id]?.[dateStr]) && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setMoveCol({ fromDate: dateStr }); setMoveToDate(dateStr) }}
+                            title="Move all workouts on this day to a new date"
+                            className={`mt-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
+                              isToday
+                                ? 'bg-white/20 text-white hover:bg-white/30'
+                                : 'bg-gray-200 text-gray-500 hover:bg-indigo-100 hover:text-indigo-600'
+                            }`}
+                          >
+                            Move day →
+                          </button>
                         )}
                       </th>
                     )
@@ -503,9 +547,18 @@ export default function TeamGrid() {
       >
         {modal && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-500 font-medium">
-              {modal.date ? format(parseISO(modal.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy') : ''}
-            </p>
+            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Date</label>
+              <input
+                type="date"
+                value={modalDate}
+                onChange={(e) => setModalDate(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              {modalDate !== modal.date && (
+                <span className="text-xs text-amber-600 font-medium">Date will change on save</span>
+              )}
+            </div>
 
             {/* Clipboard paste banner */}
             {clipboard && (
@@ -710,6 +763,40 @@ export default function TeamGrid() {
           </div>
         )}
       </Modal>
+
+      {/* Move-column modal */}
+      {moveCol && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="font-bold text-gray-900 text-base mb-1">Move Day's Workouts</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Move all workouts on <strong>{format(parseISO(moveCol.fromDate + 'T12:00:00'), 'EEEE, MMM d')}</strong> for{' '}
+              {selectedRunners.filter((r) => assignmentsByRunnerDate[r.id]?.[moveCol.fromDate]).map((r) => r.name).join(', ')} to:
+            </p>
+            <input
+              type="date"
+              value={moveToDate}
+              onChange={(e) => setMoveToDate(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-4"
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setMoveCol(null); setMoveToDate('') }}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMoveColumn}
+                disabled={!moveToDate || moveToDate === moveCol.fromDate || movingCol}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors"
+              >
+                {movingCol ? 'Moving…' : 'Move Workouts'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
