@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  collection, addDoc, deleteDoc, updateDoc,
+  getDocs, query, where, doc, serverTimestamp,
+} from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useCollection } from '../hooks/useCollection'
 import { sendWorkoutEmail } from '../utils/emailService'
@@ -51,6 +54,18 @@ export default function AssignWorkout() {
   const [toast,     setToast]     = useState(null)
   const [shareLink, setShareLink] = useState('')
 
+  // ── Conflict confirmation ─────────────────────────────────────────────────
+  // { conflictingNames: ['Alice', 'Bob'], onProceed: fn }
+  const [conflictWarning, setConflictWarning] = useState(null)
+
+  // ── Last batch (for undo + change date) ───────────────────────────────────
+  // { ids: [...], date, dateStr, recipientCount }
+  const [lastBatch,     setLastBatch]     = useState(null)
+  const [editingDate,   setEditingDate]   = useState(false)
+  const [newDate,       setNewDate]       = useState('')
+  const [rescheduling,  setRescheduling]  = useState(false)
+  const [undoing,       setUndoing]       = useState(false)
+
   // ── Derived recipient list ─────────────────────────────────────────────────
   const recipients = useMemo(() => {
     if (mode === 'all')        return runners
@@ -65,44 +80,67 @@ export default function AssignWorkout() {
     )
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  // ── Check for existing assignments on this date ────────────────────────────
+  async function checkConflicts(dateVal, runnerList) {
+    const snap = await getDocs(
+      query(collection(db, 'assignments'), where('date', '==', dateVal))
+    )
+    const existingIds = new Set(snap.docs.map((d) => d.data().runnerId))
+    return runnerList.filter((r) => existingIds.has(r.id)).map((r) => r.name)
+  }
+
+  // ── Attempt assign (checks conflicts first) ────────────────────────────────
   async function handleAssign() {
     if (!date || recipients.length === 0) return
+
+    const conflictingNames = await checkConflicts(date, recipients)
+    if (conflictingNames.length > 0) {
+      setConflictWarning({
+        conflictingNames,
+        onProceed: () => { setConflictWarning(null); doAssign() },
+      })
+      return
+    }
+
+    await doAssign()
+  }
+
+  // ── Actually write to Firestore ────────────────────────────────────────────
+  async function doAssign() {
     setSaving(true)
 
-    const dateStr     = format(new Date(date + 'T12:00:00'), 'MMMM d, yyyy')
-    const typeObj     = allWorkoutTypes.find((t) => t.value === workoutType)
-    const autoTitle   = workoutTitle.trim() || `${typeObj?.label ?? workoutType} — ${dateStr}`
-    const xtData      = (Array.isArray(crossTraining) && crossTraining.length > 0) ? crossTraining : null
+    const dateStr   = format(new Date(date + 'T12:00:00'), 'MMMM d, yyyy')
+    const typeObj   = allWorkoutTypes.find((t) => t.value === workoutType)
+    const autoTitle = workoutTitle.trim() || `${typeObj?.label ?? workoutType} — ${dateStr}`
+    const xtData    = (Array.isArray(crossTraining) && crossTraining.length > 0) ? crossTraining : null
 
     try {
-      let firstDocId = null
+      const createdIds = []
+      let firstDocId   = null
 
-      // Create ONE Firestore doc per runner so each runner's page query works
       for (const runner of recipients) {
         const data = {
-          runnerId:        runner.id,
-          runnerName:      runner.name,
+          runnerId:         runner.id,
+          runnerName:       runner.name,
           date,
           dateStr,
-          workoutTitle:    autoTitle,
+          workoutTitle:     autoTitle,
           workoutType,
-          warmup:          warmup.trim(),
-          drills:          drills || '',
+          warmup:           warmup.trim(),
+          drills:           drills || '',
           additionalWarmup: additionalWarmup.trim(),
-          mainWorkout:     mainWorkout.trim(),
-          cooldown:        cooldown.trim(),
-          crossTraining:   xtData,
-          notes:           notes.trim(),
-          createdAt:       serverTimestamp(),
+          mainWorkout:      mainWorkout.trim(),
+          cooldown:         cooldown.trim(),
+          crossTraining:    xtData,
+          notes:            notes.trim(),
+          createdAt:        serverTimestamp(),
         }
         const docRef = await addDoc(collection(db, 'assignments'), data)
+        createdIds.push(docRef.id)
         if (!firstDocId) firstDocId = docRef.id
 
-        // Send email if requested
         if (sendEmail && runner.email) {
           try {
-            // Build a minimal workoutData object so sendWorkoutEmail still works
             const workoutForEmail = {
               title:       autoTitle,
               type:        workoutType,
@@ -114,14 +152,18 @@ export default function AssignWorkout() {
             await import('../utils/emailService').then(({ sendWorkoutEmail }) =>
               sendWorkoutEmail(runner, workoutForEmail, docRef.id, dateStr, notes)
             )
-          } catch {
-            // email failures are non-fatal — carry on
-          }
+          } catch { /* email failures are non-fatal */ }
         }
       }
 
       const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
       if (firstDocId) setShareLink(`${appUrl}/#/workout/${firstDocId}`)
+
+      // Store batch for undo / change-date
+      setLastBatch({ ids: createdIds, date, dateStr, recipientCount: recipients.length })
+      setEditingDate(false)
+      setNewDate('')
+
       setToast({ message: `Workout assigned to ${recipients.length} runner${recipients.length !== 1 ? 's' : ''}!`, type: 'success' })
 
       // Reset form
@@ -138,6 +180,44 @@ export default function AssignWorkout() {
     }
   }
 
+  // ── Undo last batch ────────────────────────────────────────────────────────
+  async function handleUndo() {
+    if (!lastBatch) return
+    setUndoing(true)
+    try {
+      await Promise.all(lastBatch.ids.map((id) => deleteDoc(doc(db, 'assignments', id))))
+      setLastBatch(null)
+      setShareLink('')
+      setToast({ message: 'Assignment undone.', type: 'info' })
+    } catch (err) {
+      setToast({ message: 'Undo failed: ' + err.message, type: 'error' })
+    } finally {
+      setUndoing(false)
+    }
+  }
+
+  // ── Move last batch to a new date ─────────────────────────────────────────
+  async function handleReschedule() {
+    if (!lastBatch || !newDate) return
+    setRescheduling(true)
+    try {
+      const newDateStr = format(new Date(newDate + 'T12:00:00'), 'MMMM d, yyyy')
+      await Promise.all(
+        lastBatch.ids.map((id) =>
+          updateDoc(doc(db, 'assignments', id), { date: newDate, dateStr: newDateStr })
+        )
+      )
+      setLastBatch((prev) => ({ ...prev, date: newDate, dateStr: newDateStr }))
+      setEditingDate(false)
+      setNewDate('')
+      setToast({ message: `Moved to ${newDateStr}!`, type: 'success' })
+    } catch (err) {
+      setToast({ message: 'Could not change date: ' + err.message, type: 'error' })
+    } finally {
+      setRescheduling(false)
+    }
+  }
+
   const canAssign = date && recipients.length > 0
 
   // ── Color dot for current type ─────────────────────────────────────────────
@@ -149,6 +229,66 @@ export default function AssignWorkout() {
         <h1 className="text-2xl font-bold text-gray-900">Assign Workout</h1>
         <p className="text-sm text-gray-500 mt-0.5">Write the workout, choose runners, and save.</p>
       </div>
+
+      {/* ── Last-batch action banner ── */}
+      {lastBatch && (
+        <div className="mb-6 bg-brand-50 border border-brand-200 rounded-xl px-5 py-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-brand-800">
+                Last assigned: {lastBatch.recipientCount} runner{lastBatch.recipientCount !== 1 ? 's' : ''} → {lastBatch.dateStr}
+              </p>
+              <p className="text-xs text-brand-500 mt-0.5">You can undo or move this assignment to a different date.</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => { setEditingDate((v) => !v); setNewDate(lastBatch.date) }}
+                className="px-3 py-1.5 rounded-lg border border-brand-400 text-brand-700 text-xs font-semibold hover:bg-brand-100 transition-colors"
+              >
+                Change Date
+              </button>
+              <button
+                onClick={handleUndo}
+                disabled={undoing}
+                className="px-3 py-1.5 rounded-lg bg-red-100 border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-200 transition-colors disabled:opacity-50"
+              >
+                {undoing ? 'Undoing…' : 'Undo'}
+              </button>
+              <button
+                onClick={() => { setLastBatch(null); setEditingDate(false) }}
+                className="text-brand-400 hover:text-brand-600 text-xs font-semibold transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+
+          {editingDate && (
+            <div className="flex items-center gap-3 pt-1 border-t border-brand-200">
+              <label className="text-xs font-semibold text-brand-700 whitespace-nowrap">Move to:</label>
+              <input
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                className="border border-brand-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              />
+              <button
+                onClick={handleReschedule}
+                disabled={!newDate || newDate === lastBatch.date || rescheduling}
+                className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 transition-colors disabled:opacity-40"
+              >
+                {rescheduling ? 'Saving…' : 'Save New Date'}
+              </button>
+              <button
+                onClick={() => { setEditingDate(false); setNewDate('') }}
+                className="text-brand-400 hover:text-brand-600 text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-5">
 
@@ -414,12 +554,51 @@ export default function AssignWorkout() {
 
       </div>
 
+      {/* ── Conflict confirmation modal ── */}
+      {conflictWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <span className="text-amber-500 text-2xl leading-none mt-0.5">⚠️</span>
+              <div>
+                <h2 className="font-bold text-gray-900 text-base">Workouts already exist for this day</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  The following runner{conflictWarning.conflictingNames.length !== 1 ? 's' : ''} already have a workout on this date:
+                </p>
+                <ul className="mt-2 space-y-0.5">
+                  {conflictWarning.conflictingNames.map((name) => (
+                    <li key={name} className="text-sm font-medium text-amber-700">• {name}</li>
+                  ))}
+                </ul>
+                <p className="text-sm text-gray-500 mt-3">
+                  Continuing will create a second workout for them on the same day.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConflictWarning(null)}
+                className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={conflictWarning.onProceed}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+              >
+                Assign Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   )
 }
 
-// ── Card wrapper (consistent with old Section look) ───────────────────────────
+// ── Card wrapper ───────────────────────────────────────────────────────────────
 function Card({ step, title, children }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
