@@ -8,6 +8,7 @@ import { useCollection } from '../hooks/useCollection'
 import Modal from '../components/Modal'
 import Toast from '../components/Toast'
 import { EVENTS, GRADES } from '../utils/constants'
+import { effectiveGrade, currentSchoolYear, hasGraduated } from '../utils/seasons'
 
 const EMPTY_RUNNER = {
   name: '', grade: '', email: '', phone: '',
@@ -42,7 +43,14 @@ export default function Roster() {
 
   function openAdd()       { setCurrent(EMPTY_RUNNER); setModal('add')  }
   function openEdit(r)     {
-    setCurrent({ ...EMPTY_RUNNER, ...r, seasons: { ...EMPTY_RUNNER.seasons, ...(r.seasons || {}) } })
+    // Show the auto-advanced grade in the edit form (not the raw stored one).
+    const liveGrade = effectiveGrade(r)
+    setCurrent({
+      ...EMPTY_RUNNER,
+      ...r,
+      grade:   liveGrade === '' ? '' : String(liveGrade),
+      seasons: { ...EMPTY_RUNNER.seasons, ...(r.seasons || {}) },
+    })
     setModal('edit')
   }
   function openView(r)     { setCurrent(r);             setModal('view') }
@@ -71,6 +79,8 @@ export default function Roster() {
     const data = {
       name:         current.name.trim(),
       grade:        current.grade,
+      // Stamp grade with the current school year so it auto-advances next year.
+      gradeSetYear: current.grade ? currentSchoolYear() : null,
       email:        current.email.trim(),
       phone:        current.phone.trim(),
       primaryEvent: current.primaryEvent,
@@ -249,7 +259,14 @@ export default function Roster() {
                       </button>
                     </div>
                   </td>
-                  <td className="px-5 py-3 text-gray-600">{r.grade ? `Grade ${r.grade}` : '—'}</td>
+                  <td className="px-5 py-3 text-gray-600">
+                    {(() => {
+                      const g = effectiveGrade(r)
+                      if (g === '') return '—'
+                      if (hasGraduated(r)) return <span className="text-amber-600 font-medium">Graduated</span>
+                      return `Grade ${g}`
+                    })()}
+                  </td>
                   <td className="px-5 py-3 text-gray-600">{r.primaryEvent || '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{r.group || '—'}</td>
                   <td className="px-5 py-3">
@@ -415,7 +432,7 @@ export default function Roster() {
       <Modal isOpen={modal === 'view'} onClose={close} title={current.name} size="md">
         <dl className="space-y-3 text-sm">
           {[
-            ['Grade',        current.grade ? `Grade ${current.grade}` : '—'],
+            ['Grade',        effectiveGrade(current) ? `Grade ${effectiveGrade(current)}` : '—'],
             ['Years Running',current.yearsRunning || '—'],
             ['Primary Event',current.primaryEvent || '—'],
             ['Group',        current.group || '—'],
