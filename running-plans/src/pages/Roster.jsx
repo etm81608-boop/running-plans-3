@@ -13,7 +13,15 @@ const EMPTY_RUNNER = {
   name: '', grade: '', email: '', phone: '',
   primaryEvent: '', group: '', yearsRunning: '',
   prs: {},
+  seasons: { xc: false, winter: false, spring: false },
+  archived: false,
 }
+
+const SEASONS = [
+  { key: 'xc',     label: 'Cross Country', short: 'XC',     color: 'bg-orange-100 text-orange-800', dot: '#ea580c' },
+  { key: 'winter', label: 'Winter Track',  short: 'Winter', color: 'bg-blue-100 text-blue-800',     dot: '#2563eb' },
+  { key: 'spring', label: 'Spring Track',  short: 'Spring', color: 'bg-green-100 text-green-800',   dot: '#16a34a' },
+]
 
 const PR_EVENTS = [
   '100m','200m','400m','800m','1500m','1 Mile','3000m','5K','2 Mile',
@@ -30,9 +38,13 @@ export default function Roster() {
   const [search,  setSearch]  = useState('')
   const [prEvent, setPrEvent] = useState(PR_EVENTS[0])
   const [prTime,  setPrTime]  = useState('')
+  const [tab,     setTab]     = useState('all') // 'all'|'xc'|'winter'|'spring'|'archived'
 
   function openAdd()       { setCurrent(EMPTY_RUNNER); setModal('add')  }
-  function openEdit(r)     { setCurrent(r);             setModal('edit') }
+  function openEdit(r)     {
+    setCurrent({ ...EMPTY_RUNNER, ...r, seasons: { ...EMPTY_RUNNER.seasons, ...(r.seasons || {}) } })
+    setModal('edit')
+  }
   function openView(r)     { setCurrent(r);             setModal('view') }
   function openDelete(r)   { setCurrent(r);             setModal('delete') }
   function close()         { setModal(null)  }
@@ -65,6 +77,12 @@ export default function Roster() {
       group:        current.group,
       yearsRunning: current.yearsRunning,
       prs:          current.prs || {},
+      seasons:      {
+        xc:     !!current.seasons?.xc,
+        winter: !!current.seasons?.winter,
+        spring: !!current.seasons?.spring,
+      },
+      archived:     !!current.archived,
     }
     if (!data.name) return
 
@@ -92,18 +110,63 @@ export default function Roster() {
     }
   }
 
+  async function toggleSeason(runner, key) {
+    const seasons = { xc: false, winter: false, spring: false, ...(runner.seasons || {}) }
+    seasons[key] = !seasons[key]
+    try {
+      await updateDoc(doc(db, 'runners', runner.id), { seasons })
+    } catch (err) {
+      setToast({ message: 'Error: ' + err.message, type: 'error' })
+    }
+  }
+
+  async function toggleArchive(runner) {
+    const archived = !runner.archived
+    try {
+      await updateDoc(doc(db, 'runners', runner.id), { archived })
+      setToast({
+        message: archived ? `${runner.name} archived.` : `${runner.name} restored.`,
+        type: 'info',
+      })
+    } catch (err) {
+      setToast({ message: 'Error: ' + err.message, type: 'error' })
+    }
+  }
+
   const lastName = (name = '') => {
     const parts = name.trim().split(/\s+/)
     return parts[parts.length - 1].toLowerCase()
   }
 
+  const counts = {
+    all:      runners.filter((r) => !r.archived).length,
+    xc:       runners.filter((r) => !r.archived && r.seasons?.xc).length,
+    winter:   runners.filter((r) => !r.archived && r.seasons?.winter).length,
+    spring:   runners.filter((r) => !r.archived && r.seasons?.spring).length,
+    archived: runners.filter((r) =>  r.archived).length,
+  }
+
   const filtered = runners
+    .filter((r) => {
+      if (tab === 'archived')  return !!r.archived
+      if (r.archived)           return false
+      if (tab === 'all')        return true
+      return !!r.seasons?.[tab]
+    })
     .filter((r) =>
       r.name?.toLowerCase().includes(search.toLowerCase()) ||
       r.group?.toLowerCase().includes(search.toLowerCase()) ||
       r.primaryEvent?.toLowerCase().includes(search.toLowerCase()),
     )
     .sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)))
+
+  const TABS = [
+    { key: 'all',      label: 'All Active' },
+    { key: 'xc',       label: 'Cross Country' },
+    { key: 'winter',   label: 'Winter Track' },
+    { key: 'spring',   label: 'Spring Track' },
+    { key: 'archived', label: 'Archived' },
+  ]
 
   return (
     <div className="p-8">
@@ -115,6 +178,28 @@ export default function Roster() {
         <button onClick={openAdd} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           + Add Runner
         </button>
+      </div>
+
+      {/* Season tabs */}
+      <div className="mb-4 flex flex-wrap gap-2 border-b border-gray-200">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+              tab === t.key
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {t.label}
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
+              tab === t.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {counts[t.key]}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Search */}
@@ -142,7 +227,7 @@ export default function Roster() {
                 <th className="px-5 py-3 text-left">Grade</th>
                 <th className="px-5 py-3 text-left">Primary Event</th>
                 <th className="px-5 py-3 text-left">Group</th>
-                <th className="px-5 py-3 text-left">Yrs Running</th>
+                <th className="px-5 py-3 text-left">Seasons</th>
                 <th className="px-5 py-3 text-left">Email</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
@@ -167,10 +252,36 @@ export default function Roster() {
                   <td className="px-5 py-3 text-gray-600">{r.grade ? `Grade ${r.grade}` : '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{r.primaryEvent || '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{r.group || '—'}</td>
-                  <td className="px-5 py-3 text-gray-600">{r.yearsRunning || '—'}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {SEASONS.map((s) => {
+                        const on = !!r.seasons?.[s.key]
+                        return (
+                          <button
+                            key={s.key}
+                            onClick={() => toggleSeason(r, s.key)}
+                            title={on ? `Remove from ${s.label}` : `Add to ${s.label}`}
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full transition-all ${
+                              on
+                                ? `${s.color} ring-1 ring-inset ring-current/20`
+                                : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                            }`}
+                          >
+                            {s.short}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </td>
                   <td className="px-5 py-3 text-gray-600">{r.email || '—'}</td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3 text-right whitespace-nowrap">
                     <button onClick={() => openEdit(r)} className="text-brand-600 hover:text-brand-800 mr-3 font-medium">Edit</button>
+                    <button
+                      onClick={() => toggleArchive(r)}
+                      className="text-gray-500 hover:text-gray-800 mr-3 font-medium"
+                    >
+                      {r.archived ? 'Restore' : 'Archive'}
+                    </button>
                     <button onClick={() => openDelete(r)} className="text-red-500 hover:text-red-700 font-medium">Delete</button>
                   </td>
                 </tr>
@@ -225,6 +336,45 @@ export default function Roster() {
               <option value="">— none —</option>
               {groups.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
             </select>
+          </div>
+
+          {/* Seasons */}
+          <div className="col-span-2 mt-2">
+            <p className="text-sm font-semibold text-gray-700 mb-2">Seasons</p>
+            <div className="flex flex-wrap gap-2">
+              {SEASONS.map((s) => {
+                const on = !!current.seasons?.[s.key]
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() =>
+                      setCurrent((c) => ({
+                        ...c,
+                        seasons: { ...(c.seasons || {}), [s.key]: !on },
+                      }))
+                    }
+                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                      on
+                        ? `${s.color} border-transparent ring-2 ring-offset-1 ring-current/30`
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.dot }} />
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+            <label className="mt-3 inline-flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={!!current.archived}
+                onChange={(e) => set('archived', e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              Archived (graduated / no longer on team)
+            </label>
           </div>
 
           {/* PRs */}
