@@ -10,6 +10,7 @@ import { format, addDays, startOfWeek, parseISO } from 'date-fns'
 import CrossTrainingInput, { ctToText, normaliseCT } from '../components/CrossTrainingInput'
 import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import useWeather from '../hooks/useWeather'
+import { SEASONS, getCurrentSeason, filterBySeason } from '../utils/seasons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -82,9 +83,13 @@ export default function TeamGrid() {
   const allWorkoutTypes   = useWorkoutTypes()
   const formWorkoutTypes  = allWorkoutTypes.filter((t) => t.value !== 'rest')
 
-  const { docs: allRunners } = useCollection('runners',  'name')
-  const { docs: assignments } = useCollection('assignments', 'date')
-  const { docs: templates }   = useCollection('workouts',    'createdAt')
+  const { docs: allRunnersRaw } = useCollection('runners',  'name')
+  const { docs: assignments }    = useCollection('assignments', 'date')
+  const { docs: templates }      = useCollection('workouts',    'createdAt')
+
+  // Season filter — defaults to the current season
+  const [season, setSeason] = useState(() => getCurrentSeason())
+  const allRunners = useMemo(() => filterBySeason(allRunnersRaw, season), [allRunnersRaw, season])
 
   const [weekAnchor, setWeekAnchor] = useState(() => getMondayOf(new Date()))
 
@@ -316,9 +321,27 @@ export default function TeamGrid() {
 
       {/* Runner picker */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-          Select Runners ({selectedIds.length}/{MAX_RUNNERS})
-        </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+            Select Runners ({selectedIds.length}/{MAX_RUNNERS})
+          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {SEASONS.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => { setSeason(s.key); setSelectedIds([]) }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                  season === s.key
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.dot }} />
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           {allRunners.map((r) => {
             const isSelected = selectedIds.includes(r.id)
