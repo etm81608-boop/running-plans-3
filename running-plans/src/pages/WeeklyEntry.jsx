@@ -93,10 +93,15 @@ function isWeekLocked(weekStartIso) {
   return sunday <= startOfToday()
 }
 
-/** Default to the earliest editable Monday (so Sundays land on *next* week). */
+/** Always default to the Monday of the *upcoming* week, no matter what day it is. */
 function defaultWeekStart() {
-  let m = getMonday()
-  while (isWeekLocked(format(m, 'yyyy-MM-dd'))) m = addDays(m, 7)
+  const today = new Date()
+  const day   = today.getDay() // 0=Sun … 6=Sat
+  // Days until next Monday (Monday itself → 7 days away, not today)
+  const daysUntilNextMonday = day === 0 ? 1 : 8 - day
+  const m = new Date(today)
+  m.setDate(m.getDate() + daysUntilNextMonday)
+  m.setHours(12, 0, 0, 0)
   return format(m, 'yyyy-MM-dd')
 }
 
