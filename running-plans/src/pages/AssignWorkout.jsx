@@ -11,6 +11,7 @@ import CrossTrainingInput from '../components/CrossTrainingInput'
 import { getWorkoutTypeLabel, getWorkoutTypeColor } from '../utils/constants'
 import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import { format } from 'date-fns'
+import { SEASONS, getCurrentSeason, filterBySeason } from '../utils/seasons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -28,8 +29,12 @@ export default function AssignWorkout() {
   const allWorkoutTypes = useWorkoutTypes()
   const typeOptions     = allWorkoutTypes.filter((t) => t.value !== 'rest')
 
-  const { docs: runners } = useCollection('runners', 'name')
-  const { docs: groups }  = useCollection('groups',  'name')
+  const { docs: allRunners } = useCollection('runners', 'name')
+  const { docs: groups }     = useCollection('groups',  'name')
+
+  // Season filter — defaults to the current season
+  const [season, setSeason] = useState(() => getCurrentSeason())
+  const runners = useMemo(() => filterBySeason(allRunners, season), [allRunners, season])
 
   // ── Workout fields ────────────────────────────────────────────────────────
   const [date,             setDate]             = useState('')
@@ -420,6 +425,28 @@ export default function AssignWorkout() {
 
         {/* ── 8. Recipients ── */}
         <Card step="8" title="Recipients">
+          {/* Season filter */}
+          <div className="mb-4 flex items-center gap-2 flex-wrap">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Season:</label>
+            {SEASONS.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => { setSeason(s.key); setSelectedRunners([]) }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                  season === s.key
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.dot }} />
+                {s.label}
+              </button>
+            ))}
+            <span className="text-xs text-gray-400 ml-auto">
+              {runners.length} runner{runners.length !== 1 ? 's' : ''} in this season
+            </span>
+          </div>
+
           {/* Mode tabs */}
           <div className="flex gap-2 mb-4">
             {[
