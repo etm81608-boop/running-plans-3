@@ -32,6 +32,22 @@ const SEED_VARSITY = [
   { date: '2026-05-16', time: '',          name: 'PAISAA Championship',         opponents: [],                                                                              location: 'Malvern Preparatory School',             home: false, championship: true  },
 ]
 
+const SEED_WINTER_2026_27 = [
+  { date: '2026-12-11', time: '6:30 PM',    name: 'DVGTCA Meet #1',                                 opponents: [], location: 'Alvernia University',               home: false, championship: false, notes: 'Bus; leave EA at 4:15 PM' },
+  { date: '2026-12-18', time: '6:30 PM',    name: 'DVGTCA Invitational (Day 1)',                    opponents: [], location: 'Lehigh University',                 home: false, championship: false, notes: 'Bus; leave EA at 4:15 PM' },
+  { date: '2027-01-02', time: '2:30–5:00 PM', name: 'Upper Dublin Winter Series — Girls Sprint Night', opponents: [], location: 'UPenn, Philadelphia, PA',         home: false, championship: false, notes: 'No Bus; reserve 1 EA Van; leave EA at 12:30 PM' },
+  { date: '2027-01-09', time: 'All Day',    name: 'Kevin Dare Invitational',                        opponents: [], location: 'Penn State University',             home: false, championship: false, notes: "Coach with Boys' Team; leaving EA at 5 AM" },
+  { date: '2027-01-15', time: '6:30 PM',    name: 'DVGTCA Meet #6',                                 opponents: [], location: 'Lehigh University',                 home: false, championship: false, notes: 'Bus; leave EA at 4:15 PM' },
+  { date: '2027-01-17', time: '2:00 PM',    name: 'Kristian Marche Memorial Invitational',          opponents: [], location: 'UPenn, Philadelphia, PA',           home: false, championship: false, notes: 'No Bus; reserve 1 EA Van; leave EA at 12:00 PM' },
+  { date: '2027-01-24', time: '1:00–5:30 PM', name: 'PTFCA Indoor Track Festival',                  opponents: [], location: 'UPenn, Philadelphia, PA',           home: false, championship: false, notes: 'No Bus; reserve 1 EA Van; leave EA at 11:00 AM' },
+  { date: '2027-01-29', time: '6:30 PM',    name: 'DVGTCA Meet #7',                                 opponents: [], location: 'Alvernia University',               home: false, championship: false, notes: 'Bus; leave EA at 4:15 PM' },
+  { date: '2027-01-30', time: '2:00 PM',    name: 'Penn Relays Showcase (debating attending)',      opponents: [], location: 'UPenn, Philadelphia, PA',           home: false, championship: false, notes: 'Cars' },
+  { date: '2027-02-10', time: '7:00–10:00 PM', name: 'Upper Dublin Winter Series — Girls Relay Night (DMR)', opponents: [], location: 'UPenn, Philadelphia, PA',  home: false, championship: false, notes: 'Cars + 1 EA Van; leave EA at 5:00 PM' },
+  { date: '2027-02-14', time: '4:30–8:30 PM', name: 'PAISAA Champs',                                opponents: [], location: 'UPenn, Philadelphia, PA',           home: false, championship: true,  notes: 'Cars + 1 EA Van; leave EA at 2:30 PM' },
+  { date: '2027-02-28', time: 'All Day',    name: 'PTFCA Indoor State Champs',                      opponents: [], location: 'Penn State University',             home: false, championship: true,  notes: 'Coach Bus overnight (Sat to Sun) with the Boys Team' },
+  { date: '2027-03-11', time: 'TBD',        name: 'Nike Indoor Nationals (NIN)',                    opponents: [], location: 'TBD',                                home: false, championship: true,  notes: 'Mar 11–14 (Thu–Sun); Cars' },
+]
+
 const SEED_MS = [
   { date: '2026-04-02', time: '', name: 'EA @ Penn Charter',              opponents: ['Penn Charter'],                     location: 'William Penn Charter School',            home: false, championship: false },
   { date: '2026-04-08', time: '', name: 'Penn Relay Qualifier @ Penn Charter', opponents: [],                              location: 'William Penn Charter School',            home: false, championship: false },
@@ -63,9 +79,10 @@ function meetToForm(m) {
   }
 }
 
-function formToDoc(f, type) {
+function formToDoc(f, type, season) {
   return {
     type,
+    season,
     name: f.name.trim(),
     date: f.date,
     time: f.time.trim(),
@@ -78,7 +95,7 @@ function formToDoc(f, type) {
 
 // ── Modal ──────────────────────────────────────────────────────────────────────
 
-function MeetModal({ initial, type, onSave, onClose }) {
+function MeetModal({ initial, type, season, onSave, onClose }) {
   const [form, setForm] = useState(initial || BLANK)
   const [saving, setSaving] = useState(false)
 
@@ -88,7 +105,7 @@ function MeetModal({ initial, type, onSave, onClose }) {
     e.preventDefault()
     if (!form.name.trim() || !form.date) return
     setSaving(true)
-    await onSave(formToDoc(form, type))
+    await onSave(formToDoc(form, type, season))
     setSaving(false)
     onClose()
   }
@@ -247,8 +264,32 @@ export default function Meets() {
     load()
   }, [])
 
-  const varsity = useMemo(() => meets.filter((m) => m.type === 'varsity'), [meets])
-  const ms      = useMemo(() => meets.filter((m) => m.type === 'ms'),      [meets])
+  // Treat meets with no `season` field as Spring (backward-compat with old seeds)
+  const inSeason = (m) => (m.season || 'Spring Track and Field') === season
+  const varsity = useMemo(() => meets.filter((m) => m.type === 'varsity' && inSeason(m)), [meets, season])
+  const ms      = useMemo(() => meets.filter((m) => m.type === 'ms'      && inSeason(m)), [meets, season])
+
+  const [importing, setImporting] = useState(false)
+
+  async function importWinter2026_27() {
+    if (!confirm('Import the 2026–27 Winter Track schedule (13 meets)?')) return
+    setImporting(true)
+    try {
+      const batch = writeBatch(db)
+      const toAdd = SEED_WINTER_2026_27.map((m) => ({
+        ...m,
+        type: 'varsity',
+        season: 'Winter Track and Field',
+      }))
+      toAdd.forEach((m) => batch.set(doc(collection(db, 'meets')), m))
+      await batch.commit()
+      // Re-pull to grab generated ids
+      const snap = await getDocs(query(collection(db, 'meets'), orderBy('date')))
+      setMeets(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+    } finally {
+      setImporting(false)
+    }
+  }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
   async function handleSave(data, existingId) {
@@ -277,7 +318,7 @@ export default function Meets() {
     <div className="p-8 max-w-6xl">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Meet Schedule</h1>
           <div className="flex items-center gap-2 mt-0.5">
@@ -308,6 +349,17 @@ export default function Meets() {
             )}
           </div>
         </div>
+
+        {/* One-click import for Winter Track, when none have been loaded yet */}
+        {season === 'Winter Track and Field' && varsity.length === 0 && (
+          <button
+            onClick={importWinter2026_27}
+            disabled={importing}
+            className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+          >
+            {importing ? 'Importing…' : '📥 Import 2026–27 Winter Schedule'}
+          </button>
+        )}
       </div>
 
       {/* Two-column layout */}
@@ -337,6 +389,7 @@ export default function Meets() {
         <MeetModal
           initial={modal.meet ? meetToForm(modal.meet) : null}
           type={modal.type}
+          season={modal.meet?.season || season}
           onSave={(data) => handleSave(data, modal.meet?.id)}
           onClose={() => setModal(null)}
         />
