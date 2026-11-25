@@ -12,6 +12,7 @@ import { useWorkoutTypes } from '../hooks/useWorkoutTypes'
 import Toast from '../components/Toast'
 import CrossTrainingInput, { ctToText } from '../components/CrossTrainingInput'
 import { format, addDays, parseISO } from 'date-fns'
+import { SEASONS, getCurrentSeason, filterBySeason } from '../utils/seasons'
 
 /* ──────────────────────────────────────────────────────────────────────────────
  * WeeklyEntry — spreadsheet-style page for entering an entire week of workouts
@@ -73,6 +74,32 @@ function getMonday(d = new Date()) {
   return m
 }
 
+/** Start of today at 00:00 local. */
+function startOfToday() {
+  const t = new Date()
+  t.setHours(0, 0, 0, 0)
+  return t
+}
+
+/** Is the week starting on `weekStartIso` already closed?
+ *  A week is locked once its Sunday (weekStart + 6 days) has arrived.
+ *  → entered-on-Sunday-for-the-prior-week bug is prevented.
+ */
+function isWeekLocked(weekStartIso) {
+  if (!weekStartIso) return false
+  const start   = parseISO(weekStartIso + 'T12:00:00')
+  const sunday  = addDays(start, 6)
+  sunday.setHours(0, 0, 0, 0)
+  return sunday <= startOfToday()
+}
+
+/** Default to the earliest editable Monday (so Sundays land on *next* week). */
+function defaultWeekStart() {
+  let m = getMonday()
+  while (isWeekLocked(format(m, 'yyyy-MM-dd'))) m = addDays(m, 7)
+  return format(m, 'yyyy-MM-dd')
+}
+
 /** Did this row receive any meaningful input? */
 function rowHasContent(r) {
   return Boolean(
@@ -93,12 +120,17 @@ export default function WeeklyEntry() {
   const allWorkoutTypes = useWorkoutTypes()
   const typeOptions     = allWorkoutTypes.filter((t) => t.value !== 'rest')
 
-  const { docs: runners }   = useCollection('runners', 'name')
-  const { docs: groups }    = useCollection('groups',  'name')
-  const { docs: templates } = useCollection('weeklyTemplates', 'name')
+  const { docs: allRunners } = useCollection('runners', 'name')
+  const { docs: groups }     = useCollection('groups',  'name')
+  const { docs: templates }  = useCollection('weeklyTemplates', 'name')
 
-  // Week start (Monday) — date string yyyy-MM-dd
-  const [weekStart, setWeekStart] = useState(() => format(getMonday(), 'yyyy-MM-dd'))
+  // Season filter — defaults to the current season based on today's date
+  const [season, setSeason] = useState(() => getCurrentSeason())
+  const runners = useMemo(() => filterBySeason(allRunners, season), [allRunners, season])
+
+  // Week start (Monday) — date string yyyy-MM-dd. Starts on next editable week.
+  const [weekStart, setWeekStart] = useState(() => defaultWeekStart())
+  const locked = isWeekLocked(weekStart)
 
   // 7 rows of workout data, one per day Mon → Sun
   const [rows, setRows] = useState(() => Array.from({ length: 7 }, blankRow))
@@ -310,6 +342,10 @@ export default function WeeklyEntry() {
   // ── Assign the whole week ──────────────────────────────────────────────────
   async function handleAssignWeek() {
     if (stats.totalDocs === 0) return
+    if (locked) {
+      setToast({ message: 'This week is locked — pick an upcoming week.', type: 'error' })
+      return
+    }
     setSaving(true)
 
     let createdDocs = 0
@@ -372,19 +408,54 @@ export default function WeeklyEntry() {
             Spreadsheet-style entry for an entire week of workouts. Tab between cells, paste from Google Sheets, fill columns down — then assign all 7 days at once.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-gray-500">Week starting (Mon)</label>
-          <input
-            type="date"
-            value={weekStart}
-            onChange={(e) => {
-              const d = parseISO(e.target.value + 'T12:00:00')
-              setWeekStart(format(getMonday(d), 'yyyy-MM-dd'))
-            }}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-500">Season</label>
+            <select
+              value={season}
+              onChange={(e) => setSeason(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
+            >
+              {SEASONS.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-gray-500">Week starting (Mon)</label>
+            <input
+              type="date"
+              value={weekStart}
+              onChange={(e) => {
+                const d = parseISO(e.target.value + 'T12:00:00')
+                setWeekStart(format(getMonday(d), 'yyyy-MM-dd'))
+              }}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
         </div>
       </div>
+
+      {/* ── Lock banner ── */}
+      {locked && (
+        <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
+          <span className="text-amber-500 text-xl leading-none mt-0.5">🔒</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-900">
+              This week is locked — it ended {format(addDays(parseISO(weekStart + 'T12:00:00'), 6), 'EEEE, MMM d')}.
+            </p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              You can review but not change workouts for a week that has already finished. Pick an upcoming week to enter new workouts.
+            </p>
+          </div>
+          <button
+            onClick={() => setWeekStart(defaultWeekStart())}
+            className="flex-shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
+          >
+            Go to next week
+          </button>
+        </div>
+      )}
 
       {/* ── Default Recipients ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
@@ -531,8 +602,11 @@ export default function WeeklyEntry() {
 
       {/* ── Spreadsheet Grid ── */}
       <div
-        onPaste={onGridPaste}
-        className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-x-auto"
+        onPaste={locked ? (e) => e.preventDefault() : onGridPaste}
+        className={`bg-white rounded-2xl shadow-sm border border-gray-200 overflow-x-auto ${
+          locked ? 'pointer-events-none opacity-60 select-none' : ''
+        }`}
+        aria-disabled={locked}
       >
         <table className="text-sm" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
           <thead>
@@ -672,10 +746,15 @@ export default function WeeklyEntry() {
         </div>
         <button
           onClick={handleAssignWeek}
-          disabled={stats.totalDocs === 0 || saving}
+          disabled={stats.totalDocs === 0 || saving || locked}
+          title={locked ? 'This week is locked.' : ''}
           className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {saving ? 'Saving…' : `Assign Week → ${stats.totalDocs || 0} Workout${stats.totalDocs !== 1 ? 's' : ''}`}
+          {locked
+            ? '🔒 Week Locked'
+            : saving
+              ? 'Saving…'
+              : `Assign Week → ${stats.totalDocs || 0} Workout${stats.totalDocs !== 1 ? 's' : ''}`}
         </button>
       </div>
 
